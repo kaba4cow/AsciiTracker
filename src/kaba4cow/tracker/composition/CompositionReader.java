@@ -58,23 +58,23 @@ public class CompositionReader {
 				track.setDefaultSample(sample);
 				track.setVolume(volume);
 			} else if (b == ORDER) {
-				for (int i = 0; i < Music.PATTERNS; i++) {
+				for (int i = 0; i < Composition.MAX_PATTERNS; i++) {
 					int pattern = readInt(input);
 					if (pattern == INVALID)
-						patternOrder[i] = Music.INVALID_NOTE;
+						patternOrder[i] = Composition.INVALID;
 					else
 						patternOrder[i] = pattern;
 				}
 			} else if (b == PATTERN) {
 				int index = readInt(input);
 				Pattern pattern = patternList[index];
-				for (int track = 0; track < Music.TRACKS; track++) {
+				for (int track = 0; track < Composition.MAX_TRACKS; track++) {
 					int notes = readInt(input);
 					for (int i = 0; i < notes; i++) {
 						int position = readInt(input);
 						int note = readInt(input);
 						if (note == BREAK)
-							pattern.setNote(track, position, Music.BREAK_NOTE);
+							pattern.setNote(track, position, Composition.BREAK);
 						else {
 							int sample = readInt(input);
 							pattern.setNote(track, position, note);
@@ -146,8 +146,8 @@ public class CompositionReader {
 
 		int[] patternOrder = composition.getPatternOrder();
 		writeInt(output, ORDER);
-		for (int i = 0; i < Music.PATTERNS; i++) {
-			if (patternOrder[i] == Music.INVALID_NOTE)
+		for (int i = 0; i < Composition.MAX_PATTERNS; i++) {
+			if (patternOrder[i] == Composition.INVALID)
 				writeInt(output, INVALID);
 			else
 				writeInt(output, patternOrder[i]);
@@ -158,17 +158,17 @@ public class CompositionReader {
 			Pattern pattern = patternList[i];
 			writeInt(output, PATTERN);
 			writeInt(output, pattern.getIndex());
-			for (int track = 0; track < Music.TRACKS; track++) {
+			for (int track = 0; track < Composition.MAX_TRACKS; track++) {
 				int notes = 0;
-				for (int position = 0; position < Music.BAR; position++)
-					if (pattern.getNote(track, position) != Music.INVALID_NOTE)
+				for (int position = 0; position < Composition.PATTERN_LENGTH; position++)
+					if (pattern.getNote(track, position) != Composition.INVALID)
 						notes++;
 				writeInt(output, notes);
-				for (int position = 0; position < Music.BAR; position++) {
+				for (int position = 0; position < Composition.PATTERN_LENGTH; position++) {
 					int note = pattern.getNote(track, position);
-					if (note != Music.INVALID_NOTE) {
+					if (note != Composition.INVALID) {
 						writeInt(output, position);
-						if (note == Music.BREAK_NOTE)
+						if (note == Composition.BREAK)
 							writeInt(output, BREAK);
 						else {
 							int sample = pattern.getSample(track, position);

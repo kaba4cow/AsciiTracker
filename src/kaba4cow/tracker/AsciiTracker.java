@@ -101,7 +101,7 @@ public class AsciiTracker implements MainProgram {
 	private Pattern.Data patternData;
 	private File saveFile;
 
-	private static int lastMidi = Music.INVALID_NOTE;
+	private static int lastMidi = Composition.INVALID;
 	private static int midiOctave = 1;
 	private static boolean midiKeyboard = true;
 
@@ -137,8 +137,8 @@ public class AsciiTracker implements MainProgram {
 		new GUIButton(menuFrame, -1, "New", f -> newComposition());
 		new GUIButton(menuFrame, -1, "Load", f -> loadComposition());
 		new GUISeparator(menuFrame, -1, false);
-		new GUIButton(menuFrame, -1, "Save", f -> saveComposition());
-		new GUIButton(menuFrame, -1, "Save as", f -> saveAsComposition());
+		new GUIButton(menuFrame, -1, "Save", f -> saveComposition(false));
+		new GUIButton(menuFrame, -1, "Save as", f -> saveComposition(true));
 		new GUISeparator(menuFrame, -1, false);
 		new GUIButton(menuFrame, -1, "Export Samples", f -> exportSamples());
 		new GUISeparator(menuFrame, -1, false);
@@ -153,15 +153,15 @@ public class AsciiTracker implements MainProgram {
 		new GUIText(infoFrame, -1, "Volume:");
 		volumeSlider = new GUISlider(infoFrame, -1, 1f);
 		new GUIText(infoFrame, -1, "Name:");
-		nameField = new GUITextField(infoFrame, -1, "").setMaxCharacters(Music.STRING_LENGTH);
+		nameField = new GUITextField(infoFrame, -1, "").setMaxCharacters(Composition.STRING_LENGTH);
 		new GUIText(infoFrame, -1, "Author:");
-		authorField = new GUITextField(infoFrame, -1, "").setMaxCharacters(Music.STRING_LENGTH);
+		authorField = new GUITextField(infoFrame, -1, "").setMaxCharacters(Composition.STRING_LENGTH);
 		new GUIText(infoFrame, -1, "Comments:");
-		commentField = new GUITextField(infoFrame, -1, "").setMaxCharacters(Music.STRING_LENGTH);
+		commentField = new GUITextField(infoFrame, -1, "").setMaxCharacters(Composition.STRING_LENGTH);
 
 		trackFrame = new GUIFrame(COLOR, false, false).setTitle("Tracks");
-		trackButtons = new GUIButton[Music.TRACKS];
-		for (int i = 0; i < Music.TRACKS; i++) {
+		trackButtons = new GUIButton[Composition.MAX_TRACKS];
+		for (int i = 0; i < Composition.MAX_TRACKS; i++) {
 			Integer index = i;
 			trackButtons[i] = new GUIButton(trackFrame, -1, "", f -> {
 				option = OPTION_TRACK_INFO;
@@ -169,21 +169,22 @@ public class AsciiTracker implements MainProgram {
 			});
 		}
 
-		// TRACKS
-		trackFrames = new GUIFrame[Music.TRACKS];
-		trackNameFields = new GUITextField[Music.TRACKS];
-		trackSamplePanels = new GUIRadioPanel[Music.TRACKS];
-		trackVolumeSliders = new GUISlider[Music.TRACKS];
-		for (int i = 0; i < Music.TRACKS; i++) {
+		// MAX_TRACKS
+		trackFrames = new GUIFrame[Composition.MAX_TRACKS];
+		trackNameFields = new GUITextField[Composition.MAX_TRACKS];
+		trackSamplePanels = new GUIRadioPanel[Composition.MAX_TRACKS];
+		trackVolumeSliders = new GUISlider[Composition.MAX_TRACKS];
+		for (int i = 0; i < Composition.MAX_TRACKS; i++) {
 			trackFrames[i] = new GUIFrame(COLOR, false, false).setTitle("Track");
-			trackNameFields[i] = new GUITextField(trackFrames[i], -1, "").setMaxCharacters(Music.TRACK_NAME);
+			trackNameFields[i] = new GUITextField(trackFrames[i], -1, "")
+					.setMaxCharacters(Composition.TRACK_NAME_LENGTH);
 			new GUIText(trackFrames[i], -1, "Volume:");
 			trackVolumeSliders[i] = new GUISlider(trackFrames[i], -1, 1f);
 			new GUISeparator(trackFrames[i], -1, true);
 			trackSamplePanels[i] = new GUIRadioPanel(trackFrames[i], -1, "Default Sample:");
 		}
 
-		// SAMPLES
+		// MAX_SAMPLES
 		sampleFrame = new GUIFrame(COLOR, false, false).setTitle("Samples");
 
 		// LIBRARY
@@ -228,7 +229,7 @@ public class AsciiTracker implements MainProgram {
 		authorField.setText(composition.getAuthor());
 		commentField.setText(composition.getComment());
 
-		for (int i = 0; i < Music.TRACKS; i++) {
+		for (int i = 0; i < Composition.MAX_TRACKS; i++) {
 			Track track = composition.getTrack(i);
 			trackButtons[i].setText(track.getName());
 			trackNameFields[i].setText(track.getName());
@@ -243,7 +244,7 @@ public class AsciiTracker implements MainProgram {
 		ArrayList<Sample> samples = composition.getSamples();
 		for (int i = 0; i < samples.size(); i++) {
 			Integer index = i;
-			new GUIButton(sampleFrame, -1, Music.getSampleName(i + 1) + ":" + samples.get(i).getName(), f -> {
+			new GUIButton(sampleFrame, -1, getSampleName(i + 1) + ":" + samples.get(i).getName(), f -> {
 				sampleSource.stop();
 				if (Input.isKey(Input.KEY_SHIFT_LEFT) && composition.removeSample(index))
 					updateSampleList();
@@ -251,11 +252,10 @@ public class AsciiTracker implements MainProgram {
 					sampleSource.play(samples.get(index).getBuffer());
 			});
 		}
-		for (int i = 0; i < Music.TRACKS; i++) {
+		for (int i = 0; i < Composition.MAX_TRACKS; i++) {
 			trackSamplePanels[i].clear();
 			for (int j = 0; j < samples.size(); j++)
-				new GUIRadioButton(trackSamplePanels[i], -1,
-						Music.getSampleName(j + 1) + ":" + samples.get(j).getName());
+				new GUIRadioButton(trackSamplePanels[i], -1, getSampleName(j + 1) + ":" + samples.get(j).getName());
 		}
 	}
 
@@ -273,12 +273,9 @@ public class AsciiTracker implements MainProgram {
 		}
 	}
 
-	private void saveAsComposition() {
-		saveFile = null;
-		saveComposition();
-	}
-
-	private void saveComposition() {
+	private void saveComposition(boolean newFile) {
+		if (newFile)
+			saveFile = null;
 		if (saveFile == null) {
 			// TODO
 			saveFile = new File("song2");
@@ -334,14 +331,14 @@ public class AsciiTracker implements MainProgram {
 		else if (orderScroll > maxOrderScroll)
 			orderScroll = maxOrderScroll;
 
-		int maxPatternScrollX = Music.TRACKS * 10 - Window.getWidth() + patternFrameX + 8;
+		int maxPatternScrollX = Composition.MAX_TRACKS * 10 - Window.getWidth() + patternFrameX + 8;
 		if (maxPatternScrollX < 0)
 			maxPatternScrollX = 0;
 		if (patternScrollX < 0)
 			patternScrollX = 0;
 		else if (patternScrollX > maxPatternScrollX)
 			patternScrollX = maxPatternScrollX;
-		int maxPatternScrollY = 2 * Music.BAR - Window.getHeight() + 5;
+		int maxPatternScrollY = 2 * Composition.PATTERN_LENGTH - Window.getHeight() + 5;
 		maxPatternScrollY += maxPatternScrollY % 2;
 		if (maxPatternScrollY < 0)
 			maxPatternScrollY = 0;
@@ -354,13 +351,13 @@ public class AsciiTracker implements MainProgram {
 	private int inputMidi() {
 		if (Input.isKeyDown(Input.KEY_M))
 			midiKeyboard = !midiKeyboard;
-		if (lastMidi != Music.INVALID_NOTE) {
+		if (lastMidi != Composition.INVALID) {
 			int note = lastMidi;
-			lastMidi = Music.INVALID_NOTE;
+			lastMidi = Composition.INVALID;
 			return note;
 		}
 		if (!midiKeyboard)
-			return Music.INVALID_NOTE;
+			return Composition.INVALID;
 		if (Input.isKeyDown(Input.KEY_Z) && Music.NOTE_C + 12 * midiOctave > 12)
 			midiOctave--;
 		if (Input.isKeyDown(Input.KEY_X) && Music.NOTE_C + 12 * midiOctave < 116)
@@ -396,14 +393,14 @@ public class AsciiTracker implements MainProgram {
 			return Music.NOTE_Cs + octave;
 		if (Input.isKeyDown(Input.KEY_L))
 			return Music.NOTE_D + octave;
-		return Music.INVALID_NOTE;
+		return Composition.INVALID;
 	}
 
 	private void inputSelectedNote(Pattern pattern) {
 		int note = inputMidi();
 		if (pattern != null && !composition.isPlaying() && selectedNote[0] != -1) {
 			Track track = composition.getTrack(selectedNote[0]);
-			if (note != Music.INVALID_NOTE) {
+			if (note != Composition.INVALID) {
 				pattern.setNote(selectedNote[0], selectedNote[1], note);
 				track.update(pattern, selectedNote[1]);
 			}
@@ -467,8 +464,8 @@ public class AsciiTracker implements MainProgram {
 				selectedNote[0] = 0;
 		} else if (Input.isKeyDown(Input.KEY_RIGHT)) {
 			selectedNote[0]++;
-			if (selectedNote[0] >= Music.TRACKS)
-				selectedNote[0] = Music.TRACKS - 1;
+			if (selectedNote[0] >= Composition.MAX_TRACKS)
+				selectedNote[0] = Composition.MAX_TRACKS - 1;
 		}
 	}
 
@@ -494,9 +491,14 @@ public class AsciiTracker implements MainProgram {
 			return;
 		}
 
-		if (Input.isKey(Input.KEY_CONTROL_LEFT) && Input.isKeyDown(Input.KEY_S)) {
-			saveComposition();
-			return;
+		if (Input.isKey(Input.KEY_CONTROL_LEFT)) {
+			if (Input.isKeyDown(Input.KEY_S)) {
+				saveComposition(Input.isKey(Input.KEY_SHIFT_LEFT));
+				return;
+			} else if (Input.isKeyDown(Input.KEY_O)) {
+				loadComposition();
+				return;
+			}
 		}
 
 		orderFrameX = Window.getWidth() / 4;
@@ -569,8 +571,8 @@ public class AsciiTracker implements MainProgram {
 		renderPattern(mX, mY, color);
 
 		Drawer.drawString(orderFrameX, 0, false,
-				"BAR:" + Music.getBarName(composition.getBar()) + " PATTERN:"
-						+ Music.getPatternName(composition.getPattern(selectedBar)) + " OCTAVE:"
+				"PATTERN_LENGTH:" + getBarName(composition.getBar()) + " PATTERN:"
+						+ getPatternName(composition.getPattern(selectedBar)) + " OCTAVE:"
 						+ String.format("%+d", midiOctave) + " KEYBOARD:" + (midiKeyboard ? "ON" : "OFF"),
 				color);
 
@@ -587,7 +589,7 @@ public class AsciiTracker implements MainProgram {
 		BoxDrawer.drawBox(orderFrameX, 1, 8, 2, false, color);
 		Drawer.drawString(orderFrameX + 1, 2, false, "-ORDER-", color);
 
-		// PATTERNS
+		// MAX_PATTERNS
 		Drawer.enableClipping(orderFrameX, 4, Window.getWidth(), Window.getHeight());
 		for (int i = 0; i < composition.getLength(); i++) {
 			int y = i * 2 + 4 - orderScroll;
@@ -596,7 +598,7 @@ public class AsciiTracker implements MainProgram {
 			if (mY == y + 1 && mX >= orderFrameX && mX <= orderFrameX + 8)
 				newSelectedBar = i;
 
-			String name = Music.getBarName(i) + "::" + Music.getPatternName(pattern);
+			String name = getBarName(i) + "::" + getPatternName(pattern);
 			BoxDrawer.drawBox(orderFrameX, y, 8, 2, false, color);
 			Drawer.drawString(orderFrameX + 1, y + 1, false, name, i == selectedBar ? COLOR : color);
 		}
@@ -616,16 +618,16 @@ public class AsciiTracker implements MainProgram {
 
 		// POSITIONS
 		Drawer.enableClipping(patternFrameX, 4, Window.getWidth(), Window.getHeight());
-		for (int j = 0; j < Music.BAR; j++) {
+		for (int j = 0; j < Composition.PATTERN_LENGTH; j++) {
 			int y = j * 2 + 4 - patternScrollY;
 			BoxDrawer.drawBox(patternFrameX, y, 7, 2, false, color);
-			Drawer.drawString(patternFrameX + 1, y + 1, false, Music.getPositionName(selectedBar, j),
+			Drawer.drawString(patternFrameX + 1, y + 1, false, getPositionName(selectedBar, j),
 					position == j ? COLOR : color);
 		}
 
 		// NOTES
 		Pattern pattern = composition.getPattern(selectedBar);
-		for (int i = 0; i < Music.TRACKS; i++) {
+		for (int i = 0; i < Composition.MAX_TRACKS; i++) {
 			int x = i * 10 + patternFrameX + 8 - patternScrollX;
 			Track track = composition.getTrack(i);
 
@@ -634,7 +636,7 @@ public class AsciiTracker implements MainProgram {
 			Drawer.drawString(x + 1, 2, false, track.getName(), color);
 
 			Drawer.enableClipping(patternFrameX + 8, 4, Window.getWidth(), Window.getHeight());
-			for (int j = 0; j < Music.BAR; j++) {
+			for (int j = 0; j < Composition.PATTERN_LENGTH; j++) {
 				int y = j * 2 + 4 - patternScrollY;
 				BoxDrawer.drawBox(x, y, 9, 2, true, color);
 
@@ -646,7 +648,7 @@ public class AsciiTracker implements MainProgram {
 				int currentColor = (i == selectedNote[0] && j == selectedNote[1]
 						&& Engine.getElapsedTime() % 0.6f < 0.3f) ? COLOR : color;
 
-				String name = Music.getNoteSampleName(pattern, i, j);
+				String name = getNoteSampleName(pattern, i, j);
 				Drawer.drawString(x + 1, y + 1, false, name, currentColor);
 			}
 		}
@@ -671,33 +673,88 @@ public class AsciiTracker implements MainProgram {
 		messageText.setText(message);
 	}
 
+	public static String getNoteName(int note) {
+		return String.format("%s%01X", Music.getNote(note), Music.getOctave(note));
+	}
+
+	public static String getNoteSampleName(Pattern pattern, int track, int position) {
+		if (pattern == null)
+			return "        ";
+		int note = pattern.getNote(track, position);
+		if (note == Composition.INVALID)
+			return "        ";
+		else if (note == Composition.BREAK)
+			return "^^^^^^^^";
+		int sample = pattern.getSample(track, position);
+		return getNoteName(note) + "::" + getSampleName(sample);
+	}
+
+	public static String getBarName(int bar) {
+		return String.format("%03d", bar + 1);
+	}
+
+	public static String getPositionName(int bar, int position) {
+		return String.format("%03d-%02d", bar + 1, position);
+	}
+
+	public static String getSampleName(int sample) {
+		return String.format("%03d", sample);
+	}
+
+	public static String getPatternName(Pattern pattern) {
+		if (pattern == null)
+			return "xx";
+		else
+			return getPatternName(pattern.getIndex());
+	}
+
+	public static String getPatternName(int pattern) {
+		return String.format("%02X", pattern);
+	}
+
+	@Override
+	public void onClose() {
+		MidiReceiver.closeDevices();
+	}
+
 	public static void main(String[] args) throws Exception {
-		MidiDevice device;
-		MidiDevice.Info[] infos = MidiSystem.getMidiDeviceInfo();
-		for (int i = 0; i < infos.length; i++)
-			try {
-				device = MidiSystem.getMidiDevice(infos[i]);
-				List<Transmitter> transmitters = device.getTransmitters();
-				for (int j = 0; j < transmitters.size(); j++)
-					transmitters.get(j).setReceiver(new MidiInputReceiver());
-				Transmitter transmitter = device.getTransmitter();
-				transmitter.setReceiver(new MidiInputReceiver());
-				device.open();
-				Printer.println("MIDI device: " + device.getDeviceInfo());
-
-			} catch (MidiUnavailableException e) {
-			}
-
 		Engine.init("Ascii Tracker", 8, 60);
+		MidiReceiver.init();
 		Sample.loadLibrary("library");
 		Window.createWindowed(120, 80);
 		Engine.start(new AsciiTracker());
 	}
 
-	private static class MidiInputReceiver implements Receiver {
+	private static class MidiReceiver implements Receiver {
 
-		public MidiInputReceiver() {
+		private static ArrayList<MidiReceiver> midiReceivers = new ArrayList<>();
 
+		private final MidiDevice device;
+
+		public MidiReceiver(MidiDevice device) throws MidiUnavailableException {
+			this.device = device;
+			List<Transmitter> transmitters = device.getTransmitters();
+			for (int j = 0; j < transmitters.size(); j++)
+				transmitters.get(j).setReceiver(this);
+			Transmitter transmitter = device.getTransmitter();
+			transmitter.setReceiver(this);
+			device.open();
+			Printer.println("Opened MIDI device: " + device.getDeviceInfo());
+		}
+
+		public static void init() {
+			MidiDevice.Info[] infos = MidiSystem.getMidiDeviceInfo();
+			for (int i = 0; i < infos.length; i++)
+				try {
+					MidiDevice device = MidiSystem.getMidiDevice(infos[i]);
+					midiReceivers.add(new MidiReceiver(device));
+				} catch (MidiUnavailableException e) {
+				}
+		}
+
+		public static void closeDevices() {
+			for (int i = 0; i < midiReceivers.size(); i++)
+				midiReceivers.get(i).close();
 		}
 
 		@Override
@@ -709,6 +766,7 @@ public class AsciiTracker implements MainProgram {
 
 		@Override
 		public void close() {
+			device.close();
 		}
 	}
 

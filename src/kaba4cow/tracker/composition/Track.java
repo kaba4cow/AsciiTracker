@@ -1,6 +1,7 @@
 package kaba4cow.tracker.composition;
 
 import kaba4cow.ascii.audio.Source;
+import kaba4cow.ascii.toolbox.maths.Maths;
 
 public class Track {
 
@@ -14,11 +15,11 @@ public class Track {
 
 	private float volume;
 
-	public Track(Composition composition, int index, String name, int defaultSample) {
+	public Track(Composition composition, int index) {
 		this.composition = composition;
 		this.index = index;
-		this.name = name;
-		this.defaultSample = defaultSample;
+		this.name = "Track-" + String.format("%02d", index + 1);
+		this.defaultSample = 0;
 		this.source = new Source("");
 		this.volume = 1f;
 	}
@@ -28,9 +29,9 @@ public class Track {
 	}
 
 	public void play(int note, int sample) {
-		if (note == Music.INVALID_NOTE)
+		if (note == Composition.INVALID)
 			return;
-		if (note == Music.BREAK_NOTE) {
+		if (note == Composition.BREAK) {
 			stop();
 			return;
 		}
@@ -45,7 +46,12 @@ public class Track {
 
 	private Source playNote(int note) {
 		stop();
-		return source.setGain(composition.getVolume() * volume).setPitch(Music.getPitch(note));
+		return source.setGain(composition.getVolume() * volume).setPitch(getPitch(note));
+	}
+
+	private static float getPitch(int note) {
+		float pow = (note - Music.NOTE_A) / 12f;
+		return Maths.pow(2f, pow);
 	}
 
 	public void stop() {

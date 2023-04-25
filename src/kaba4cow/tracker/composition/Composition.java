@@ -4,6 +4,21 @@ import java.util.ArrayList;
 
 public class Composition {
 
+	public static final int MAX_TRACKS = 16;
+	public static final int MAX_PATTERNS = 128;
+	public static final int MAX_SAMPLES = 128;
+	public static final int MAX_LENGTH = 999;
+
+	public static final int STRING_LENGTH = 256;
+	public static final int TRACK_NAME_LENGTH = 8;
+
+	public static final int PATTERN_LENGTH = 32;
+
+	public static final int INVALID = -1;
+	public static final int BREAK = 128;
+
+	private static final float DURATION = 240f / (float) PATTERN_LENGTH;
+
 	private String author;
 	private String name;
 	private String comment;
@@ -32,17 +47,16 @@ public class Composition {
 		this.length = 8;
 		this.tempo = 100;
 		this.volume = 1f;
-		this.tracks = new Track[Music.TRACKS];
 		this.samples = new ArrayList<>();
-		this.patternOrder = new int[Music.SONG_LENGTH];
+		this.patternOrder = new int[MAX_LENGTH];
 		for (int i = 0; i < patternOrder.length; i++)
-			patternOrder[i] = Music.INVALID_NOTE;
-		this.patternList = new Pattern[Music.PATTERNS];
+			patternOrder[i] = INVALID;
+		this.patternList = new Pattern[MAX_PATTERNS];
 		for (int i = 0; i < patternList.length; i++)
 			patternList[i] = new Pattern(this, i);
-
-		for (int i = 0; i < Music.TRACKS; i++)
-			tracks[i] = new Track(this, i, "Track " + String.format("%02d", i + 1), 0);
+		this.tracks = new Track[MAX_TRACKS];
+		for (int i = 0; i < MAX_TRACKS; i++)
+			tracks[i] = new Track(this, i);
 
 		this.playing = false;
 		this.bar = 0;
@@ -54,9 +68,9 @@ public class Composition {
 		if (!playing)
 			return;
 		duration += dt;
-		if (duration >= Music.DELAY / tempo) {
+		if (duration >= DURATION / tempo) {
 			position++;
-			if (position >= Music.BAR) {
+			if (position >= PATTERN_LENGTH) {
 				position = 0;
 				bar++;
 			}
@@ -69,16 +83,16 @@ public class Composition {
 	public void play() {
 		playing = true;
 		duration = 0f;
-		if (patternOrder[bar] == Music.INVALID_NOTE)
+		if (patternOrder[bar] == INVALID)
 			return;
 		Pattern pattern = patternList[patternOrder[bar]];
 		if (pattern != null)
-			for (int i = 0; i < Music.TRACKS; i++)
+			for (int i = 0; i < MAX_TRACKS; i++)
 				tracks[i].update(pattern, position);
 	}
 
 	public void stop() {
-		for (int i = 0; i < Music.TRACKS; i++)
+		for (int i = 0; i < MAX_TRACKS; i++)
 			tracks[i].stop();
 		playing = false;
 		position = 0;
@@ -110,31 +124,31 @@ public class Composition {
 	}
 
 	public void removePattern(int bar) {
-		patternOrder[bar] = Music.INVALID_NOTE;
+		patternOrder[bar] = INVALID;
 	}
 
 	public Pattern getPattern(int bar) {
-		if (patternOrder[bar] == Music.INVALID_NOTE)
+		if (patternOrder[bar] == INVALID)
 			return null;
 		return patternList[patternOrder[bar]];
 	}
 
 	public void prevPattern(int bar) {
-		if (patternOrder[bar] == Music.INVALID_NOTE)
+		if (patternOrder[bar] == INVALID)
 			patternOrder[bar] = patternList.length - 1;
 		else if (patternOrder[bar] - 1 >= 0)
 			patternOrder[bar]--;
 		else
-			patternOrder[bar] = Music.INVALID_NOTE;
+			patternOrder[bar] = INVALID;
 	}
 
 	public void nextPattern(int bar) {
-		if (patternOrder[bar] == Music.INVALID_NOTE)
+		if (patternOrder[bar] == INVALID)
 			patternOrder[bar] = 0;
 		else if (patternOrder[bar] + 1 < patternList.length)
 			patternOrder[bar]++;
 		else
-			patternOrder[bar] = Music.INVALID_NOTE;
+			patternOrder[bar] = INVALID;
 	}
 
 	public void prevBar() {
@@ -158,7 +172,7 @@ public class Composition {
 	}
 
 	public boolean addSample(Sample sample) {
-		if (samples.size() >= Music.SAMPLES || samples.contains(sample))
+		if (samples.size() >= MAX_SAMPLES || samples.contains(sample))
 			return false;
 		samples.add(sample);
 		return true;
@@ -200,7 +214,7 @@ public class Composition {
 	}
 
 	public int getTotalLength() {
-		return Music.BAR * length;
+		return PATTERN_LENGTH * length;
 	}
 
 	public int getLength() {
