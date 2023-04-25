@@ -1,4 +1,4 @@
-package kaba4cow.tracker;
+package kaba4cow.tracker.composition;
 
 public class Pattern {
 

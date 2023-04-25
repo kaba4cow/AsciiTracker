@@ -1,10 +1,12 @@
-package kaba4cow.tracker;
+package kaba4cow.tracker.composition;
 
 import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Stack;
@@ -58,6 +60,15 @@ public class Sample {
 				}
 			}
 		}
+	}
+
+	public void export(File directory) throws IOException {
+		File file = new File(directory.getAbsolutePath() + "/" + name);
+		if (!file.exists())
+			file.getParentFile().mkdirs();
+		ByteArrayOutputStream output = new ByteArrayOutputStream();
+		InputStream input = getStream();
+		CompositionReader.writeSample(output, input, file);
 	}
 
 	public static Sample get(int index) {

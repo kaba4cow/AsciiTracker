@@ -1,4 +1,4 @@
-package kaba4cow.tracker;
+package kaba4cow.tracker.composition;
 
 import kaba4cow.ascii.audio.Source;
 
@@ -45,7 +45,7 @@ public class Track {
 
 	private Source playNote(int note) {
 		stop();
-		return source.setGain(volume).setPitch(Music.getPitch(note));
+		return source.setGain(composition.getVolume() * volume).setPitch(Music.getPitch(note));
 	}
 
 	public void stop() {

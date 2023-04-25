@@ -3,6 +3,14 @@ package kaba4cow.tracker;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.List;
+
+import javax.sound.midi.MidiDevice;
+import javax.sound.midi.MidiMessage;
+import javax.sound.midi.MidiSystem;
+import javax.sound.midi.MidiUnavailableException;
+import javax.sound.midi.Receiver;
+import javax.sound.midi.Transmitter;
 
 import kaba4cow.ascii.MainProgram;
 import kaba4cow.ascii.audio.Source;
@@ -22,30 +30,44 @@ import kaba4cow.ascii.gui.GUISlider;
 import kaba4cow.ascii.gui.GUIText;
 import kaba4cow.ascii.gui.GUITextField;
 import kaba4cow.ascii.toolbox.Colors;
+import kaba4cow.ascii.toolbox.Printer;
+import kaba4cow.tracker.composition.Composition;
+import kaba4cow.tracker.composition.CompositionReader;
+import kaba4cow.tracker.composition.Music;
+import kaba4cow.tracker.composition.Pattern;
+import kaba4cow.tracker.composition.Sample;
+import kaba4cow.tracker.composition.Track;
 
-public class Tracker implements MainProgram {
+public class AsciiTracker implements MainProgram {
 
 	private static final int COLOR = 0xC83000;
 
-	private static final int OPTION_SONG_INFO = 0;
-	private static final int OPTION_TRACK_LIST = 1;
-	private static final int OPTION_TRACK_INFO = 2;
-	private static final int OPTION_SAMPLE_LIST = 3;
-	private static final int OPTION_SAMPLE_LIBRARY = 4;
+	private static final int OPTION_MENU = 0;
+	private static final int OPTION_SONG_INFO = 1;
+	private static final int OPTION_TRACK_LIST = 2;
+	private static final int OPTION_TRACK_INFO = 3;
+	private static final int OPTION_SAMPLE_LIST = 4;
+	private static final int OPTION_SAMPLE_LIBRARY = 5;
 
 	private int orderFrameX;
 	private int patternFrameX;
 
 	private Composition composition;
 
+	private GUIFrame messageFrame;
+	private GUIText messageText;
+
 	private GUIFrame optionFrame;
 
+	private GUIFrame menuFrame;
+
 	private GUIFrame infoFrame;
+	private GUITextField lengthField;
+	private GUITextField tempoField;
+	private GUISlider volumeSlider;
 	private GUITextField nameField;
 	private GUITextField authorField;
 	private GUITextField commentField;
-	private GUITextField lengthField;
-	private GUITextField tempoField;
 
 	private GUIFrame trackFrame;
 	private GUIButton[] trackButtons;
@@ -77,8 +99,13 @@ public class Tracker implements MainProgram {
 	private boolean playButton;
 
 	private Pattern.Data patternData;
+	private File saveFile;
 
-	public Tracker() {
+	private static int lastMidi = Music.INVALID_NOTE;
+	private static int midiOctave = 1;
+	private static boolean midiKeyboard = true;
+
+	public AsciiTracker() {
 
 	}
 
@@ -88,83 +115,78 @@ public class Tracker implements MainProgram {
 
 		sampleSource = new Source("");
 
-		composition = new Composition();
-		try {
-			composition = CompositionReader.read(new File("song"));
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+		selectedNote = new int[2];
+		newSelectedNote = new int[2];
 
-		patternData = null;
+		// MESSAGE
+		messageFrame = new GUIFrame(COLOR, false, false);
+		messageText = new GUIText(messageFrame, -1, "");
+		new GUISeparator(messageFrame, -1, true);
+		new GUIButton(messageFrame, -1, "OK", f -> messageText.setText(""));
 
-		orderScroll = 0;
-		patternScrollX = 0;
-		patternScrollY = 0;
-
-		selectedBar = 0;
-		newSelectedBar = 0;
-		selectedNote = new int[] { -1, -1 };
-		newSelectedNote = new int[] { -1, -1 };
-
-		option = OPTION_SONG_INFO;
-		optionTrack = 0;
-
+		// OPTIONS
 		optionFrame = new GUIFrame(COLOR, false, false);
-		new GUIButton(optionFrame, -1, "Info", f -> {
-			option = OPTION_SONG_INFO;
-		});
-		new GUIButton(optionFrame, -1, "Tracks", f -> {
-			option = OPTION_TRACK_LIST;
-		});
-		new GUIButton(optionFrame, -1, "Samples", f -> {
-			option = OPTION_SAMPLE_LIST;
-		});
-		new GUIButton(optionFrame, -1, "Library", f -> {
-			option = OPTION_SAMPLE_LIBRARY;
-		});
+		new GUIButton(optionFrame, -1, "Menu", f -> option = OPTION_MENU);
+		new GUIButton(optionFrame, -1, "Info", f -> option = OPTION_SONG_INFO);
+		new GUIButton(optionFrame, -1, "Tracks", f -> option = OPTION_TRACK_LIST);
+		new GUIButton(optionFrame, -1, "Samples", f -> option = OPTION_SAMPLE_LIST);
+		new GUIButton(optionFrame, -1, "Library", f -> option = OPTION_SAMPLE_LIBRARY);
 
+		// MENU
+		menuFrame = new GUIFrame(COLOR, false, false).setTitle("Menu");
+		new GUIButton(menuFrame, -1, "New", f -> newComposition());
+		new GUIButton(menuFrame, -1, "Load", f -> loadComposition());
+		new GUISeparator(menuFrame, -1, false);
+		new GUIButton(menuFrame, -1, "Save", f -> saveComposition());
+		new GUIButton(menuFrame, -1, "Save as", f -> saveAsComposition());
+		new GUISeparator(menuFrame, -1, false);
+		new GUIButton(menuFrame, -1, "Export Samples", f -> exportSamples());
+		new GUISeparator(menuFrame, -1, false);
+		new GUIButton(menuFrame, -1, "Exit", f -> Engine.requestClose());
+
+		// INFO
 		infoFrame = new GUIFrame(COLOR, false, false).setTitle("Info");
 		new GUIText(infoFrame, -1, "Length:");
-		lengthField = new GUITextField(infoFrame, -1, Integer.toString(composition.getLength())).setOnlyDigits()
-				.setMaxCharacters(3);
+		lengthField = new GUITextField(infoFrame, -1, "").setOnlyDigits().setMaxCharacters(3);
 		new GUIText(infoFrame, -1, "Tempo:");
-		tempoField = new GUITextField(infoFrame, -1, Integer.toString(composition.getTempo())).setOnlyDigits()
-				.setMaxCharacters(3);
+		tempoField = new GUITextField(infoFrame, -1, "").setOnlyDigits().setMaxCharacters(3);
+		new GUIText(infoFrame, -1, "Volume:");
+		volumeSlider = new GUISlider(infoFrame, -1, 1f);
 		new GUIText(infoFrame, -1, "Name:");
-		nameField = new GUITextField(infoFrame, -1, composition.getName()).setMaxCharacters(Music.STRING_LENGTH);
+		nameField = new GUITextField(infoFrame, -1, "").setMaxCharacters(Music.STRING_LENGTH);
 		new GUIText(infoFrame, -1, "Author:");
-		authorField = new GUITextField(infoFrame, -1, composition.getAuthor()).setMaxCharacters(Music.STRING_LENGTH);
+		authorField = new GUITextField(infoFrame, -1, "").setMaxCharacters(Music.STRING_LENGTH);
 		new GUIText(infoFrame, -1, "Comments:");
-		commentField = new GUITextField(infoFrame, -1, composition.getComment()).setMaxCharacters(Music.STRING_LENGTH);
+		commentField = new GUITextField(infoFrame, -1, "").setMaxCharacters(Music.STRING_LENGTH);
 
 		trackFrame = new GUIFrame(COLOR, false, false).setTitle("Tracks");
 		trackButtons = new GUIButton[Music.TRACKS];
 		for (int i = 0; i < Music.TRACKS; i++) {
 			Integer index = i;
-			trackButtons[i] = new GUIButton(trackFrame, -1, composition.getTrack(i).getName(), f -> {
+			trackButtons[i] = new GUIButton(trackFrame, -1, "", f -> {
 				option = OPTION_TRACK_INFO;
 				optionTrack = index;
 			});
 		}
 
+		// TRACKS
 		trackFrames = new GUIFrame[Music.TRACKS];
 		trackNameFields = new GUITextField[Music.TRACKS];
 		trackSamplePanels = new GUIRadioPanel[Music.TRACKS];
 		trackVolumeSliders = new GUISlider[Music.TRACKS];
 		for (int i = 0; i < Music.TRACKS; i++) {
 			trackFrames[i] = new GUIFrame(COLOR, false, false).setTitle("Track");
-			Track track = composition.getTrack(i);
-			trackNameFields[i] = new GUITextField(trackFrames[i], -1, track.getName())
-					.setMaxCharacters(Music.TRACK_NAME);
+			trackNameFields[i] = new GUITextField(trackFrames[i], -1, "").setMaxCharacters(Music.TRACK_NAME);
 			new GUIText(trackFrames[i], -1, "Volume:");
-			trackVolumeSliders[i] = new GUISlider(trackFrames[i], -1, track.getVolume());
+			trackVolumeSliders[i] = new GUISlider(trackFrames[i], -1, 1f);
 			new GUISeparator(trackFrames[i], -1, true);
 			trackSamplePanels[i] = new GUIRadioPanel(trackFrames[i], -1, "Default Sample:");
 		}
 
+		// SAMPLES
 		sampleFrame = new GUIFrame(COLOR, false, false).setTitle("Samples");
-		updateSampleList();
 
+		// LIBRARY
 		libraryFrame = new GUIFrame(COLOR, false, false).setTitle("Library");
 		ArrayList<Sample> samples = Sample.getLibrary();
 		for (int i = 0; i < samples.size(); i++) {
@@ -177,6 +199,43 @@ public class Tracker implements MainProgram {
 					updateSampleList();
 			});
 		}
+
+		newComposition();
+	}
+
+	private void updateComposition() {
+		option = OPTION_MENU;
+		optionTrack = 0;
+
+		patternData = null;
+		saveFile = null;
+
+		orderScroll = 0;
+		patternScrollX = 0;
+		patternScrollY = 0;
+
+		selectedBar = 0;
+		newSelectedBar = 0;
+		selectedNote[0] = -1;
+		selectedNote[1] = -1;
+		newSelectedNote[0] = -1;
+		newSelectedNote[1] = -1;
+
+		lengthField.setText(Integer.toString(composition.getLength()));
+		tempoField.setText(Integer.toString(composition.getTempo()));
+		volumeSlider.setPosition(composition.getVolume());
+		nameField.setText(composition.getName());
+		authorField.setText(composition.getAuthor());
+		commentField.setText(composition.getComment());
+
+		for (int i = 0; i < Music.TRACKS; i++) {
+			Track track = composition.getTrack(i);
+			trackButtons[i].setText(track.getName());
+			trackNameFields[i].setText(track.getName());
+			trackVolumeSliders[i].setPosition(track.getVolume());
+		}
+
+		updateSampleList();
 	}
 
 	private void updateSampleList() {
@@ -198,6 +257,55 @@ public class Tracker implements MainProgram {
 				new GUIRadioButton(trackSamplePanels[i], -1,
 						Music.getSampleName(j + 1) + ":" + samples.get(j).getName());
 		}
+	}
+
+	private void newComposition() {
+		composition = new Composition();
+		updateComposition();
+	}
+
+	private void loadComposition() {
+		try {
+			composition = CompositionReader.read(new File("song"));
+			updateComposition();
+		} catch (Exception e) {
+			message("Error: Unable to load the file");
+		}
+	}
+
+	private void saveAsComposition() {
+		saveFile = null;
+		saveComposition();
+	}
+
+	private void saveComposition() {
+		if (saveFile == null) {
+			// TODO
+			saveFile = new File("song2");
+		}
+		try {
+			CompositionReader.write(composition, saveFile);
+			message("File saved as \"" + saveFile.getName() + "\"");
+		} catch (Exception e) {
+			message("Error: Unable to save the file");
+		}
+	}
+
+	private void exportSamples() {
+		ArrayList<Sample> samples = composition.getSamples();
+		if (samples.isEmpty()) {
+			message("No samples found");
+			return;
+		}
+		File directory = new File(composition.getName() + "_samples");
+		int total = 0;
+		for (int i = 0; i < samples.size(); i++)
+			try {
+				samples.get(i).export(directory);
+				total++;
+			} catch (IOException e) {
+			}
+		message("Samples exported (" + total + "/" + samples.size() + ")");
 	}
 
 	private void inputScroll() {
@@ -243,8 +351,56 @@ public class Tracker implements MainProgram {
 			patternScrollY = maxPatternScrollY;
 	}
 
+	private int inputMidi() {
+		if (Input.isKeyDown(Input.KEY_M))
+			midiKeyboard = !midiKeyboard;
+		if (lastMidi != Music.INVALID_NOTE) {
+			int note = lastMidi;
+			lastMidi = Music.INVALID_NOTE;
+			return note;
+		}
+		if (!midiKeyboard)
+			return Music.INVALID_NOTE;
+		if (Input.isKeyDown(Input.KEY_Z) && Music.NOTE_C + 12 * midiOctave > 12)
+			midiOctave--;
+		if (Input.isKeyDown(Input.KEY_X) && Music.NOTE_C + 12 * midiOctave < 116)
+			midiOctave++;
+		int octave = 12 * midiOctave;
+		if (Input.isKeyDown(Input.KEY_A))
+			return Music.NOTE_C - 12 + octave;
+		if (Input.isKeyDown(Input.KEY_W))
+			return Music.NOTE_Cs - 12 + octave;
+		if (Input.isKeyDown(Input.KEY_S))
+			return Music.NOTE_D - 12 + octave;
+		if (Input.isKeyDown(Input.KEY_E))
+			return Music.NOTE_Ds - 12 + octave;
+		if (Input.isKeyDown(Input.KEY_D))
+			return Music.NOTE_E - 12 + octave;
+		if (Input.isKeyDown(Input.KEY_F))
+			return Music.NOTE_F - 12 + octave;
+		if (Input.isKeyDown(Input.KEY_T))
+			return Music.NOTE_Fs - 12 + octave;
+		if (Input.isKeyDown(Input.KEY_G))
+			return Music.NOTE_G - 12 + octave;
+		if (Input.isKeyDown(Input.KEY_Y))
+			return Music.NOTE_Gs - 12 + octave;
+		if (Input.isKeyDown(Input.KEY_H))
+			return Music.NOTE_A - 12 + octave;
+		if (Input.isKeyDown(Input.KEY_U))
+			return Music.NOTE_As - 12 + octave;
+		if (Input.isKeyDown(Input.KEY_J))
+			return Music.NOTE_B - 12 + octave;
+		if (Input.isKeyDown(Input.KEY_K))
+			return Music.NOTE_C + octave;
+		if (Input.isKeyDown(Input.KEY_O))
+			return Music.NOTE_Cs + octave;
+		if (Input.isKeyDown(Input.KEY_L))
+			return Music.NOTE_D + octave;
+		return Music.INVALID_NOTE;
+	}
+
 	private void inputSelectedNote(Pattern pattern) {
-		int note = Music.readInput();
+		int note = inputMidi();
 		if (pattern != null && !composition.isPlaying() && selectedNote[0] != -1) {
 			Track track = composition.getTrack(selectedNote[0]);
 			if (note != Music.INVALID_NOTE) {
@@ -331,11 +487,15 @@ public class Tracker implements MainProgram {
 			else
 				Window.createFullscreen();
 
+		if (!messageText.getText().isEmpty()) {
+			messageFrame.update();
+			if (Input.isKeyDown(Input.KEY_ENTER))
+				messageText.setText("");
+			return;
+		}
+
 		if (Input.isKey(Input.KEY_CONTROL_LEFT) && Input.isKeyDown(Input.KEY_S)) {
-			try {
-				CompositionReader.write(composition, new File("song"));
-			} catch (IOException e) {
-			}
+			saveComposition();
 			return;
 		}
 
@@ -384,6 +544,7 @@ public class Tracker implements MainProgram {
 			composition.setTempo(Integer.parseInt(tempoField.getText()));
 		if (!lengthField.getText().isEmpty())
 			composition.setLength(Integer.parseInt(lengthField.getText()));
+		composition.setVolume(volumeSlider.getPosition());
 
 		trackButtons[optionTrack].setText(trackNameFields[optionTrack].getText());
 		composition.getTrack(optionTrack).setName(trackNameFields[optionTrack].getText());
@@ -407,10 +568,18 @@ public class Tracker implements MainProgram {
 		renderOrder(mX, mY, color);
 		renderPattern(mX, mY, color);
 
-		Drawer.drawString(orderFrameX, 0, false, "BAR:" + Music.getBarName(composition.getBar()) + " PATTERN:"
-				+ Music.getPatternName(composition.getPattern(selectedBar)) + " OCTAVE:"
-				+ String.format("%+d", Music.getOctave()) + " KEYBOARD:" + (Music.isKeyboardEnabled() ? "ON" : "OFF"),
+		Drawer.drawString(orderFrameX, 0, false,
+				"BAR:" + Music.getBarName(composition.getBar()) + " PATTERN:"
+						+ Music.getPatternName(composition.getPattern(selectedBar)) + " OCTAVE:"
+						+ String.format("%+d", midiOctave) + " KEYBOARD:" + (midiKeyboard ? "ON" : "OFF"),
 				color);
+
+		if (!messageText.getText().isEmpty()) {
+			BoxDrawer.disableCollision();
+			messageFrame.render(Window.getWidth() / 2, Window.getHeight() / 2, Window.getWidth() / 2,
+					Window.getHeight() / 5, true);
+			BoxDrawer.enableCollision();
+		}
 	}
 
 	private void renderOrder(int mX, int mY, int color) {
@@ -485,6 +654,8 @@ public class Tracker implements MainProgram {
 	}
 
 	private GUIFrame currentFrame() {
+		if (option == OPTION_MENU)
+			return menuFrame;
 		if (option == OPTION_TRACK_LIST)
 			return trackFrame;
 		if (option == OPTION_SAMPLE_LIST)
@@ -496,12 +667,49 @@ public class Tracker implements MainProgram {
 		return infoFrame;
 	}
 
+	private void message(String message) {
+		messageText.setText(message);
+	}
+
 	public static void main(String[] args) throws Exception {
+		MidiDevice device;
+		MidiDevice.Info[] infos = MidiSystem.getMidiDeviceInfo();
+		for (int i = 0; i < infos.length; i++)
+			try {
+				device = MidiSystem.getMidiDevice(infos[i]);
+				List<Transmitter> transmitters = device.getTransmitters();
+				for (int j = 0; j < transmitters.size(); j++)
+					transmitters.get(j).setReceiver(new MidiInputReceiver());
+				Transmitter transmitter = device.getTransmitter();
+				transmitter.setReceiver(new MidiInputReceiver());
+				device.open();
+				Printer.println("MIDI device: " + device.getDeviceInfo());
+
+			} catch (MidiUnavailableException e) {
+			}
+
 		Engine.init("Ascii Tracker", 8, 60);
-		Music.init();
 		Sample.loadLibrary("library");
 		Window.createWindowed(120, 80);
-		Engine.start(new Tracker());
+		Engine.start(new AsciiTracker());
+	}
+
+	private static class MidiInputReceiver implements Receiver {
+
+		public MidiInputReceiver() {
+
+		}
+
+		@Override
+		public void send(MidiMessage msg, long timeStamp) {
+			byte[] bytes = msg.getMessage();
+			if (bytes[0] == -112)
+				lastMidi = bytes[1];
+		}
+
+		@Override
+		public void close() {
+		}
 	}
 
 }

@@ -1,4 +1,4 @@
-package kaba4cow.tracker;
+package kaba4cow.tracker.composition;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -45,12 +45,13 @@ public class CompositionReader {
 				composition.setName(readString(input));
 				composition.setAuthor(readString(input));
 				composition.setComment(readString(input));
-				composition.setLength(readByte(input));
-				composition.setTempo(readByte(input));
+				composition.setLength(readInt(input));
+				composition.setTempo(readInt(input));
+				composition.setVolume(readFloat(input));
 			} else if (b == TRACK) {
-				int index = readByte(input);
-				int sample = readByte(input);
-				float volume = (float) readByte(input) / (float) 0xFF;
+				int index = readInt(input);
+				int sample = readInt(input);
+				float volume = readFloat(input);
 				String name = readString(input);
 				Track track = composition.getTrack(index);
 				track.setName(name);
@@ -58,24 +59,24 @@ public class CompositionReader {
 				track.setVolume(volume);
 			} else if (b == ORDER) {
 				for (int i = 0; i < Music.PATTERNS; i++) {
-					int pattern = readByte(input);
+					int pattern = readInt(input);
 					if (pattern == INVALID)
 						patternOrder[i] = Music.INVALID_NOTE;
 					else
 						patternOrder[i] = pattern;
 				}
 			} else if (b == PATTERN) {
-				int index = readByte(input);
+				int index = readInt(input);
 				Pattern pattern = patternList[index];
 				for (int track = 0; track < Music.TRACKS; track++) {
-					int notes = readByte(input);
+					int notes = readInt(input);
 					for (int i = 0; i < notes; i++) {
-						int position = readByte(input);
-						int note = readByte(input);
+						int position = readInt(input);
+						int note = readInt(input);
 						if (note == BREAK)
 							pattern.setNote(track, position, Music.BREAK_NOTE);
 						else {
-							int sample = readByte(input);
+							int sample = readInt(input);
 							pattern.setNote(track, position, note);
 							pattern.setSample(track, position, sample);
 						}
@@ -101,8 +102,12 @@ public class CompositionReader {
 		return builder.toString();
 	}
 
-	private static int readByte(InputStream input) throws IOException {
+	private static int readInt(InputStream input) throws IOException {
 		return input.read();
+	}
+
+	private static float readFloat(InputStream input) throws IOException {
+		return input.read() / (float) 0xFF;
 	}
 
 	private static byte[] readBytes(InputStream input) throws IOException {
@@ -121,53 +126,54 @@ public class CompositionReader {
 		FileOutputStream stream = new FileOutputStream(file);
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 
-		write(output, INFO);
-		write(output, composition.getName());
-		write(output, composition.getAuthor());
-		write(output, composition.getComment());
-		write(output, composition.getLength());
-		write(output, composition.getTempo());
+		writeInt(output, INFO);
+		writeString(output, composition.getName());
+		writeString(output, composition.getAuthor());
+		writeString(output, composition.getComment());
+		writeInt(output, composition.getLength());
+		writeInt(output, composition.getTempo());
+		writeFloat(output, composition.getVolume());
 
 		Track[] tracks = composition.getTracks();
 		for (int i = 0; i < tracks.length; i++) {
 			Track track = tracks[i];
-			write(output, TRACK);
-			write(output, i);
-			write(output, track.getDefaultSample());
-			write(output, (int) (0xFF * track.getVolume()));
-			write(output, track.getName());
+			writeInt(output, TRACK);
+			writeInt(output, i);
+			writeInt(output, track.getDefaultSample());
+			writeFloat(output, track.getVolume());
+			writeString(output, track.getName());
 		}
 
 		int[] patternOrder = composition.getPatternOrder();
-		write(output, ORDER);
+		writeInt(output, ORDER);
 		for (int i = 0; i < Music.PATTERNS; i++) {
 			if (patternOrder[i] == Music.INVALID_NOTE)
-				write(output, INVALID);
+				writeInt(output, INVALID);
 			else
-				write(output, patternOrder[i]);
+				writeInt(output, patternOrder[i]);
 		}
 
 		Pattern[] patternList = composition.getPatternList();
 		for (int i = 0; i < patternList.length; i++) {
 			Pattern pattern = patternList[i];
-			write(output, PATTERN);
-			write(output, pattern.getIndex());
+			writeInt(output, PATTERN);
+			writeInt(output, pattern.getIndex());
 			for (int track = 0; track < Music.TRACKS; track++) {
 				int notes = 0;
 				for (int position = 0; position < Music.BAR; position++)
 					if (pattern.getNote(track, position) != Music.INVALID_NOTE)
 						notes++;
-				write(output, notes);
+				writeInt(output, notes);
 				for (int position = 0; position < Music.BAR; position++) {
 					int note = pattern.getNote(track, position);
 					if (note != Music.INVALID_NOTE) {
-						write(output, position);
+						writeInt(output, position);
 						if (note == Music.BREAK_NOTE)
-							write(output, BREAK);
+							writeInt(output, BREAK);
 						else {
 							int sample = pattern.getSample(track, position);
-							write(output, note);
-							write(output, sample);
+							writeInt(output, note);
+							writeInt(output, sample);
 						}
 					}
 				}
@@ -177,13 +183,23 @@ public class CompositionReader {
 		ArrayList<Sample> samples = composition.getSamples();
 		for (int i = 0; i < samples.size(); i++) {
 			Sample sample = samples.get(i);
-			write(output, SAMPLE);
-			write(output, sample.getName());
-			write(output, getBytes(sample.getStream()));
+			writeInt(output, SAMPLE);
+			writeString(output, sample.getName());
+			writeBytes(output, getBytes(sample.getStream()));
 		}
 
 		output.writeTo(stream);
 		output.close();
+	}
+
+	public static void writeSample(ByteArrayOutputStream output, InputStream input, File file) throws IOException {
+		byte[] bytes = getBytes(input);
+		output.write(bytes);
+		FileOutputStream stream = new FileOutputStream(file);
+		output.writeTo(stream);
+		input.close();
+		output.close();
+		stream.close();
 	}
 
 	private static byte[] getBytes(InputStream stream) throws IOException {
@@ -196,16 +212,20 @@ public class CompositionReader {
 		return output.toByteArray();
 	}
 
-	private static void write(ByteArrayOutputStream output, String string) throws IOException {
+	private static void writeString(ByteArrayOutputStream output, String string) throws IOException {
 		output.write(string.length());
 		output.write(string.getBytes());
 	}
 
-	private static void write(ByteArrayOutputStream output, int value) {
+	private static void writeInt(ByteArrayOutputStream output, int value) {
 		output.write(value);
 	}
 
-	private static void write(ByteArrayOutputStream output, byte[] bytes) throws IOException {
+	private static void writeFloat(ByteArrayOutputStream output, float value) {
+		output.write((int) (0xFF * value));
+	}
+
+	private static void writeBytes(ByteArrayOutputStream output, byte[] bytes) throws IOException {
 		output.write((bytes.length >> 24) & 0xFF);
 		output.write((bytes.length >> 16) & 0xFF);
 		output.write((bytes.length >> 8) & 0xFF);

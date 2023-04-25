@@ -1,8 +1,6 @@
-package kaba4cow.tracker;
+package kaba4cow.tracker.composition;
 
 import java.util.ArrayList;
-
-import kaba4cow.ascii.toolbox.utils.ProgramUtils;
 
 public class Composition {
 
@@ -25,12 +23,15 @@ public class Composition {
 	private int position;
 	private float duration;
 
+	private float volume;
+
 	public Composition() {
-		this.author = "Unknown";
-		this.name = "New Song";
-		this.comment = ProgramUtils.getDate("MM.dd.YYYY");
-		this.length = 2;
+		this.author = "";
+		this.name = "";
+		this.comment = "";
+		this.length = 8;
 		this.tempo = 100;
+		this.volume = 1f;
 		this.tracks = new Track[Music.TRACKS];
 		this.samples = new ArrayList<>();
 		this.patternOrder = new int[Music.SONG_LENGTH];
@@ -42,35 +43,6 @@ public class Composition {
 
 		for (int i = 0; i < Music.TRACKS; i++)
 			tracks[i] = new Track(this, i, "Track " + String.format("%02d", i + 1), 0);
-
-//		for (int i = 0; i < 5; i++)
-//			addSample(Sample.get(i));
-//
-//		setPattern(0, patternList[0]);
-//		setPattern(1, patternList[1]);
-//
-//		patternList[0].setNote(0, 0, Music.NOTE_Gs - 12);
-//		patternList[0].setNote(0, 4, Music.NOTE_C);
-//		patternList[0].setNote(0, 8, Music.NOTE_Ds);
-//		patternList[0].setNote(0, 12, Music.NOTE_C);
-//		patternList[0].setNote(0, 16, Music.NOTE_G);
-//		patternList[0].setNote(0, 20, Music.NOTE_Ds);
-//		patternList[0].setNote(0, 24, Music.NOTE_C);
-//		patternList[0].setNote(0, 28, Music.NOTE_Ds);
-//
-//		patternList[1].setNote(0, 0, Music.NOTE_F);
-//		patternList[1].setNote(0, 4, Music.NOTE_C);
-//		patternList[1].setNote(0, 8, Music.NOTE_G);
-//		patternList[1].setNote(0, 12, Music.NOTE_F);
-//		patternList[1].setNote(0, 16, Music.NOTE_C);
-//		patternList[1].setNote(0, 20, Music.NOTE_Ds);
-//		patternList[1].setNote(0, 24, Music.NOTE_C);
-//		patternList[1].setNote(0, 28, Music.NOTE_Ds);
-//
-//		patternList[0].setNote(1, 0, Music.NOTE_Gs - 24);
-//		patternList[0].setNote(1, 16, Music.NOTE_G - 12);
-//		patternList[1].setNote(1, 0, Music.NOTE_F - 12);
-//		patternList[1].setNote(1, 16, Music.NOTE_C - 12);
 
 		this.playing = false;
 		this.bar = 0;
@@ -249,6 +221,14 @@ public class Composition {
 		if (tempo < 10)
 			tempo = 10;
 		this.tempo = tempo;
+	}
+
+	public float getVolume() {
+		return volume;
+	}
+
+	public void setVolume(float volume) {
+		this.volume = volume;
 	}
 
 	public int getBar() {
