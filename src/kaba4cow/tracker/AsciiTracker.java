@@ -164,9 +164,9 @@ public class AsciiTracker implements MainProgram {
 	public void init() {
 		Renderer.setFont(1);
 
-		Sample.loadLibrary(getLibraryLocation().getAbsolutePath());
+		Sample.loadLibrary(getLibraryLocation());
 
-		sampleSource = new Source("");
+		sampleSource = new Source();
 
 		selectedNote = new int[2];
 		newSelectedNote = new int[2];
@@ -359,10 +359,10 @@ public class AsciiTracker implements MainProgram {
 	}
 
 	private void selectLibraryLocation() {
-		File file = libraryBrowser.getSelectedFile();
-		libraryBrowser.setDirectory(file);
-		Sample.loadLibrary(file.getAbsolutePath());
-		preferences.put("lib-location", file.getAbsolutePath());
+		File directory = libraryBrowser.getSelectedFile();
+		libraryBrowser.setDirectory(directory);
+		Sample.loadLibrary(directory);
+		preferences.put("lib-location", directory.getAbsolutePath());
 		libraryTree.setDirectory(getLibraryLocation());
 		library = false;
 	}
@@ -454,9 +454,14 @@ public class AsciiTracker implements MainProgram {
 
 		if (!messageText.getText().isEmpty()) {
 			messageFrame.update();
-			if (Input.isKeyDown(Input.KEY_ENTER))
+			if (Input.isKeyDown(Input.KEY_ENTER) || Input.isKeyDown(Input.KEY_ESCAPE))
 				messageText.setText("");
 			return;
+		}
+		if (Input.isKeyDown(Input.KEY_ESCAPE)) {
+			library = false;
+			help = false;
+			browser = BROWSER_NONE;
 		}
 		if (library) {
 			File file = libraryBrowser.getSelectedFile();
@@ -478,14 +483,10 @@ public class AsciiTracker implements MainProgram {
 			fileBrowserFrame.update();
 			if (Input.isKeyDown(Input.KEY_ENTER))
 				selectBrowserFile();
-			else if (Input.isKeyDown(Input.KEY_ESCAPE))
-				browser = BROWSER_NONE;
 			return;
 		}
 		if (Input.isKey(Input.KEY_CONTROL_LEFT) && Input.isKeyDown(Input.KEY_H))
 			help = !help;
-		if (Input.isKey(Input.KEY_ESCAPE))
-			help = false;
 		if (help) {
 			helpFrame.update();
 			return;
@@ -527,14 +528,18 @@ public class AsciiTracker implements MainProgram {
 		selectedBar = composition.getBar();
 
 		if (Input.isKeyDown(Input.KEY_SPACE) || playButton && Input.isButtonDown(Input.LEFT)) {
-			if (Input.isKey(Input.KEY_CONTROL_LEFT))
-				composition.setBar(0);
-			if (composition.isPlaying())
-				composition.stop();
-			else
-				composition.play();
-			playButton = false;
+			if (sampleSource.isPlaying())
+				sampleSource.stop();
+			else {
+				if (Input.isKey(Input.KEY_CONTROL_LEFT))
+					composition.setBar(0);
+				if (composition.isPlaying())
+					composition.stop();
+				else
+					composition.play();
+			}
 		}
+		playButton = false;
 
 		if (Input.isKey(Input.KEY_CONTROL_LEFT)) {
 			inputSelectedPattern(pattern);
@@ -566,16 +571,16 @@ public class AsciiTracker implements MainProgram {
 	}
 
 	private void inputOptions() {
-		if (Input.isKeyDown(Input.KEY_1))
-			option = OPTION_MENU;
-		else if (Input.isKeyDown(Input.KEY_2))
-			option = OPTION_SONG_INFO;
-		else if (Input.isKeyDown(Input.KEY_3))
-			option = OPTION_TRACK_LIST;
-		else if (Input.isKeyDown(Input.KEY_4))
-			option = OPTION_SAMPLE_LIST;
-		else if (Input.isKeyDown(Input.KEY_5))
-			option = OPTION_SAMPLE_LIBRARY;
+//		if (Input.isKeyDown(Input.KEY_1))
+//			option = OPTION_MENU;
+//		else if (Input.isKeyDown(Input.KEY_2))
+//			option = OPTION_SONG_INFO;
+//		else if (Input.isKeyDown(Input.KEY_3))
+//			option = OPTION_TRACK_LIST;
+//		else if (Input.isKeyDown(Input.KEY_4))
+//			option = OPTION_SAMPLE_LIST;
+//		else if (Input.isKeyDown(Input.KEY_5))
+//			option = OPTION_SAMPLE_LIBRARY;
 	}
 
 	private void inputScroll() {
@@ -933,12 +938,12 @@ public class AsciiTracker implements MainProgram {
 		public HelpFrame(int color) {
 			super(color, false, false);
 			setTitle("Help");
-			add("Menu tab", Input.KEY_1);
-			add("Info tab", Input.KEY_2);
-			add("Tracks tab", Input.KEY_3);
-			add("Samples tab", Input.KEY_4);
-			add("Library tab", Input.KEY_5);
-			new GUISeparator(this, -1, true);
+//			add("Menu tab", Input.KEY_1);
+//			add("Info tab", Input.KEY_2);
+//			add("Tracks tab", Input.KEY_3);
+//			add("Samples tab", Input.KEY_4);
+//			add("Library tab", Input.KEY_5);
+//			new GUISeparator(this, -1, true);
 			add("Quit", Input.KEY_CONTROL_LEFT, Input.KEY_W);
 			add("Help", Input.KEY_CONTROL_LEFT, Input.KEY_H);
 			add("Window/fullscreen", Input.KEY_F11);
