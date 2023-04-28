@@ -44,8 +44,6 @@ import kaba4cow.ascii.tracker.Track;
 
 public class AsciiTracker implements MainProgram {
 
-	private static final String LIBRARY = "library";
-
 	private static final String[] NOTES = { "C-", "C#", "D-", "D#", "E-", "F-", "F#", "G-", "G#", "A-", "A#", "B-" };
 
 	public static final int NOTE_C = 60;
@@ -61,7 +59,7 @@ public class AsciiTracker implements MainProgram {
 	public static final int NOTE_As = 70;
 	public static final int NOTE_B = 71;
 
-	private static final int COLOR = 0xE82000;
+	private static final int COLOR = 0xFA6000;
 
 	private static final int BROWSER_NONE = 0;
 	private static final int BROWSER_SAVE = 1;
@@ -74,6 +72,7 @@ public class AsciiTracker implements MainProgram {
 	private static final int OPTION_SAMPLE_LIST = 4;
 	private static final int OPTION_SAMPLE_LIBRARY = 5;
 
+	private boolean library;
 	private boolean help;
 	private int browser;
 	private int option;
@@ -103,12 +102,16 @@ public class AsciiTracker implements MainProgram {
 
 	private HelpFrame helpFrame;
 
+	private GUIFrame libraryBrowserFrame;
+	private GUIButton libraryBrowserButton;
+	private GUIFileBrowser libraryBrowser;
+
 	private GUIFrame messageFrame;
 	private GUIText messageText;
 
-	private GUIFrame browserFrame;
-	private GUIButton browserButton;
-	private GUIFileBrowser browserBrowser;
+	private GUIFrame fileBrowserFrame;
+	private GUIButton fileBrowserButton;
+	private GUIFileBrowser fileBrowser;
 
 	private GUIFrame optionFrame;
 
@@ -150,13 +153,18 @@ public class AsciiTracker implements MainProgram {
 		return file;
 	}
 
-	private void setFileLocation(File file) {
-		preferences.put("proj-location", file.getAbsolutePath());
+	private File getLibraryLocation() {
+		File file = new File(preferences.get("lib-location", System.getProperty("user.dir")));
+		if (!file.exists())
+			file = new File(System.getProperty("user.dir"));
+		return file;
 	}
 
 	@Override
 	public void init() {
 		Renderer.setFont(1);
+
+		Sample.loadLibrary(getLibraryLocation().getAbsolutePath());
 
 		sampleSource = new Source("");
 
@@ -172,11 +180,23 @@ public class AsciiTracker implements MainProgram {
 		new GUISeparator(messageFrame, -1, true);
 		new GUIButton(messageFrame, -1, "OK", f -> messageText.setText(""));
 
-		// BROWSER
-		browserFrame = new GUIFrame(COLOR, false, false);
-		browserButton = new GUIButton(browserFrame, -1, "", f -> selectBrowserFile());
-		browserBrowser = new GUIFileBrowser(browserFrame, -1, getFileLocation());
-		browserBrowser.setFileFilter(new FileFilter() {
+		// LIBRARY BROWSER
+		libraryBrowserFrame = new GUIFrame(COLOR, false, false);
+		libraryBrowserButton = new GUIButton(libraryBrowserFrame, -1, "", f -> selectLibraryLocation());
+		libraryBrowser = new GUIFileBrowser(libraryBrowserFrame, -1, getLibraryLocation());
+		libraryBrowser.setFileFilter(new FileFilter() {
+			@Override
+			public boolean accept(File file) {
+				return file.isDirectory();
+			}
+		});
+
+		// FILE BROWSER
+		fileBrowserFrame = new GUIFrame(COLOR, false, false);
+		fileBrowserButton = new GUIButton(fileBrowserFrame, -1, "", f -> selectBrowserFile());
+		fileBrowser = new GUIFileBrowser(fileBrowserFrame, -1, getFileLocation())
+				.setFileGlyph(Glyphs.BEAMED_EIGHTH_NOTES);
+		fileBrowser.setFileFilter(new FileFilter() {
 			@Override
 			public boolean accept(File file) {
 				return file.getName().endsWith(".atc");
@@ -248,15 +268,23 @@ public class AsciiTracker implements MainProgram {
 
 		// LIBRARY
 		libraryFrame = new GUIFrame(COLOR, false, false).setTitle("Library");
+		new GUIButton(libraryFrame, -1, "Change location", f -> changeLibraryLocation());
 		new GUIButton(libraryFrame, -1, "Add sample", f -> addSample());
-		libraryTree = new GUIFileTree(libraryFrame, -1, new File(LIBRARY)) {
+		libraryTree = new GUIFileTree(libraryFrame, -1, getLibraryLocation()) {
 			@Override
 			public void onNewFileSelected(File file) {
 				Sample sample = Sample.get(file.getAbsolutePath());
 				if (sample != null)
 					sampleSource.play(sample.getBuffer());
 			}
-		};
+		}.setFileGlyph(Glyphs.BEAMED_EIGHTH_NOTES);
+		libraryTree.setFileFilter(new FileFilter() {
+			@Override
+			public boolean accept(File file) {
+				return file.getName().endsWith(".wav");
+			}
+		});
+		libraryTree.refresh();
 		new GUISeparator(libraryFrame, -1, false);
 
 		newComposition();
@@ -325,15 +353,29 @@ public class AsciiTracker implements MainProgram {
 			updateSampleList();
 	}
 
+	private void changeLibraryLocation() {
+		library = true;
+		libraryBrowser.setDirectory(getLibraryLocation());
+	}
+
+	private void selectLibraryLocation() {
+		File file = libraryBrowser.getSelectedFile();
+		libraryBrowser.setDirectory(file);
+		Sample.loadLibrary(file.getAbsolutePath());
+		preferences.put("lib-location", file.getAbsolutePath());
+		libraryTree.setDirectory(getLibraryLocation());
+		library = false;
+	}
+
 	private void selectBrowserFile() {
-		File file = browserBrowser.getSelectedFile();
+		File file = fileBrowser.getSelectedFile();
 		if (file == null)
 			return;
 		if (browser == BROWSER_OPEN && file.isFile())
 			openComposition(file);
 		else if (browser == BROWSER_SAVE)
 			saveComposition(file);
-		setFileLocation(browserBrowser.getDirectory());
+		preferences.put("proj-location", fileBrowser.getDirectory().getAbsolutePath());
 	}
 
 	private void newComposition() {
@@ -342,7 +384,7 @@ public class AsciiTracker implements MainProgram {
 	}
 
 	private void openComposition() {
-		browserBrowser.refresh();
+		fileBrowser.refresh();
 		browser = BROWSER_OPEN;
 	}
 
@@ -362,7 +404,7 @@ public class AsciiTracker implements MainProgram {
 	}
 
 	private void saveComposition(boolean newFile) {
-		browserBrowser.refresh();
+		fileBrowser.refresh();
 		if (newFile)
 			saveFile = null;
 		if (saveFile == null)
@@ -382,7 +424,7 @@ public class AsciiTracker implements MainProgram {
 		} catch (Exception e) {
 			message("Error: Unable to save the file");
 		}
-		browserBrowser.refresh();
+		fileBrowser.refresh();
 	}
 
 	private void exportSamples() {
@@ -416,13 +458,24 @@ public class AsciiTracker implements MainProgram {
 				messageText.setText("");
 			return;
 		}
-		if (browser != BROWSER_NONE) {
-			File file = browserBrowser.getSelectedFile();
-			String string = browser == BROWSER_OPEN ? "Open: " : "Save to: ";
-			if (browserBrowser.getSelectedFile() != null)
+		if (library) {
+			File file = libraryBrowser.getSelectedFile();
+			String string = "Set to: ";
+			if (libraryBrowser.getSelectedFile() != null)
 				string += file.getParentFile() == null ? file.getAbsolutePath() : file.getName();
-			browserButton.setText(string);
-			browserFrame.update();
+			libraryBrowserButton.setText(string);
+			libraryBrowserFrame.update();
+			if (Input.isKeyDown(Input.KEY_ENTER))
+				selectLibraryLocation();
+			return;
+		}
+		if (browser != BROWSER_NONE) {
+			File file = fileBrowser.getSelectedFile();
+			String string = browser == BROWSER_OPEN ? "Open: " : "Save to: ";
+			if (fileBrowser.getSelectedFile() != null)
+				string += file.getParentFile() == null ? file.getAbsolutePath() : file.getName();
+			fileBrowserButton.setText(string);
+			fileBrowserFrame.update();
 			if (Input.isKeyDown(Input.KEY_ENTER))
 				selectBrowserFile();
 			else if (Input.isKeyDown(Input.KEY_ESCAPE))
@@ -723,8 +776,11 @@ public class AsciiTracker implements MainProgram {
 		BoxDrawer.disableCollision();
 		if (help)
 			helpFrame.render(orderFrameX, 0, Window.getWidth() - orderFrameX, Window.getHeight(), false);
-		if (browser != BROWSER_NONE)
-			browserFrame.render(Window.getWidth() / 2, Window.getHeight() / 2, Window.getWidth() / 2,
+		if (library)
+			libraryBrowserFrame.render(Window.getWidth() / 2, Window.getHeight() / 2, Window.getWidth() / 2,
+					Window.getHeight() / 2, true);
+		else if (browser != BROWSER_NONE)
+			fileBrowserFrame.render(Window.getWidth() / 2, Window.getHeight() / 2, Window.getWidth() / 2,
 					Window.getHeight() / 2, true);
 		if (!messageText.getText().isEmpty())
 			messageFrame.render(Window.getWidth() / 2, Window.getHeight() / 2, Window.getWidth() / 3,
@@ -868,7 +924,6 @@ public class AsciiTracker implements MainProgram {
 	public static void main(String[] args) throws Exception {
 		Engine.init("Ascii Tracker", 8, 60);
 		MidiReceiver.init();
-		Sample.loadLibrary(LIBRARY);
 		Window.createWindowed(120, 80);
 		Engine.start(new AsciiTracker());
 	}
