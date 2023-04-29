@@ -36,6 +36,7 @@ import kaba4cow.ascii.gui.GUIText;
 import kaba4cow.ascii.gui.GUITextField;
 import kaba4cow.ascii.toolbox.Colors;
 import kaba4cow.ascii.toolbox.Printer;
+import kaba4cow.ascii.toolbox.utils.StringUtils;
 import kaba4cow.ascii.tracker.Composition;
 import kaba4cow.ascii.tracker.CompositionReader;
 import kaba4cow.ascii.tracker.Pattern;
@@ -45,6 +46,8 @@ import kaba4cow.ascii.tracker.Track;
 public class AsciiTracker implements MainProgram {
 
 	private static final String[] NOTES = { "C-", "C#", "D-", "D#", "E-", "F-", "F#", "G-", "G#", "A-", "A#", "B-" };
+
+	// A# D F G F D D# D TODO
 
 	public static final int NOTE_C = 60;
 	public static final int NOTE_Cs = 61;
@@ -72,26 +75,6 @@ public class AsciiTracker implements MainProgram {
 	private static final int OPTION_SAMPLE_LIST = 4;
 	private static final int OPTION_SAMPLE_LIBRARY = 5;
 
-	private boolean library;
-	private boolean help;
-	private int browser;
-	private int option;
-	private int optionTrack;
-
-	private int orderScroll;
-	private int patternScrollX;
-	private int patternScrollY;
-
-	private int selectedBar;
-	private int newSelectedBar;
-	private int[] selectedNote;
-	private int[] newSelectedNote;
-
-	private boolean playButton;
-
-	private int orderFrameX;
-	private int patternFrameX;
-
 	private final Preferences preferences;
 
 	private Source sampleSource;
@@ -100,14 +83,32 @@ public class AsciiTracker implements MainProgram {
 	private Pattern.Data patternCopy;
 	private File saveFile;
 
+	private boolean library;
+	private boolean help;
+	private int browser;
+	private int option;
+	private int optionTrack;
+
+	private int orderFrameX;
+	private int patternFrameX;
+
+	private int orderScroll;
+	private int patternScrollX;
+	private int patternScrollY;
+
+	private int selectedBar;
+	private int newSelectedBar;
+	private int selectedTrack;
+	private int newSelectedTrack;
+	private int selectedNote;
+	private int newSelectedNote;
+
 	private HelpFrame helpFrame;
+	private MessageFrame messageFrame;
 
 	private GUIFrame libraryBrowserFrame;
 	private GUIButton libraryBrowserButton;
 	private GUIFileBrowser libraryBrowser;
-
-	private GUIFrame messageFrame;
-	private GUIText messageText;
 
 	private GUIFrame fileBrowserFrame;
 	private GUIButton fileBrowserButton;
@@ -123,7 +124,6 @@ public class AsciiTracker implements MainProgram {
 	private GUISlider volumeSlider;
 	private GUITextField nameField;
 	private GUITextField authorField;
-	private GUITextField commentField;
 
 	private GUIFrame trackFrame;
 	private GUIButton[] trackButtons;
@@ -164,21 +164,13 @@ public class AsciiTracker implements MainProgram {
 	public void init() {
 		Renderer.setFont(1);
 
-		Sample.loadLibrary(getLibraryLocation());
-
 		sampleSource = new Source();
 
-		selectedNote = new int[2];
-		newSelectedNote = new int[2];
-
 		// HELP
-		helpFrame = new HelpFrame(Colors.swap(COLOR));
+		helpFrame = new HelpFrame();
 
 		// MESSAGE
-		messageFrame = new GUIFrame(COLOR, false, false);
-		messageText = new GUIText(messageFrame, -1, "");
-		new GUISeparator(messageFrame, -1, true);
-		new GUIButton(messageFrame, -1, "OK", f -> messageText.setText(""));
+		messageFrame = new MessageFrame();
 
 		// LIBRARY BROWSER
 		libraryBrowserFrame = new GUIFrame(COLOR, false, false);
@@ -190,6 +182,7 @@ public class AsciiTracker implements MainProgram {
 				return file.isDirectory();
 			}
 		});
+		Sample.loadLibrary(getLibraryLocation());
 
 		// FILE BROWSER
 		fileBrowserFrame = new GUIFrame(COLOR, false, false);
@@ -235,8 +228,6 @@ public class AsciiTracker implements MainProgram {
 		nameField = new GUITextField(infoFrame, -1, "").setMaxCharacters(Composition.STRING_LENGTH);
 		new GUIText(infoFrame, -1, "Author:");
 		authorField = new GUITextField(infoFrame, -1, "").setMaxCharacters(Composition.STRING_LENGTH);
-		new GUIText(infoFrame, -1, "Comments:");
-		commentField = new GUITextField(infoFrame, -1, "").setMaxCharacters(Composition.STRING_LENGTH);
 
 		trackFrame = new GUIFrame(COLOR, false, false).setTitle("Tracks");
 		trackButtons = new GUIButton[Composition.MAX_TRACKS];
@@ -303,17 +294,16 @@ public class AsciiTracker implements MainProgram {
 
 		selectedBar = 0;
 		newSelectedBar = 0;
-		selectedNote[0] = -1;
-		selectedNote[1] = -1;
-		newSelectedNote[0] = -1;
-		newSelectedNote[1] = -1;
+		selectedTrack = 0;
+		newSelectedTrack = 0;
+		selectedNote = -1;
+		newSelectedNote = -1;
 
 		lengthField.setText(Integer.toString(composition.getLength()));
 		tempoField.setText(Integer.toString(composition.getTempo()));
 		volumeSlider.setPosition(composition.getVolume());
 		nameField.setText(composition.getName());
 		authorField.setText(composition.getAuthor());
-		commentField.setText(composition.getComment());
 
 		for (int i = 0; i < Composition.MAX_TRACKS; i++) {
 			Track track = composition.getTrack(i);
@@ -342,6 +332,7 @@ public class AsciiTracker implements MainProgram {
 			trackSamplePanels[i].clear();
 			for (int j = 0; j < samples.size(); j++)
 				new GUIRadioButton(trackSamplePanels[i], -1, getSampleName(j + 1) + ":" + samples.get(j).getName());
+			trackSamplePanels[i].setIndex(composition.getTrack(i).getDefaultSample());
 		}
 	}
 
@@ -395,7 +386,7 @@ public class AsciiTracker implements MainProgram {
 		} catch (Exception e) {
 		}
 		if (newComposition == null)
-			message("Error: Unable to load the file");
+			messageFrame.spawn("Error: Unable to load the file");
 		else {
 			composition = newComposition;
 			updateComposition(file);
@@ -419,10 +410,10 @@ public class AsciiTracker implements MainProgram {
 		saveFile = file;
 		try {
 			CompositionReader.write(composition, file);
-			message("File saved as \"" + file.getName() + "\"");
+			messageFrame.spawn("File saved as \"" + file.getName() + "\"");
 			browser = BROWSER_NONE;
 		} catch (Exception e) {
-			message("Error: Unable to save the file");
+			messageFrame.spawn("Error: Unable to save the file");
 		}
 		fileBrowser.refresh();
 	}
@@ -430,7 +421,7 @@ public class AsciiTracker implements MainProgram {
 	private void exportSamples() {
 		ArrayList<Sample> samples = composition.getSamples();
 		if (samples.isEmpty()) {
-			message("No samples found");
+			messageFrame.spawn("No samples found");
 			return;
 		}
 		File directory = new File(composition.getName() + "_samples");
@@ -441,7 +432,7 @@ public class AsciiTracker implements MainProgram {
 				total++;
 			} catch (IOException e) {
 			}
-		message("Samples exported (" + total + "/" + samples.size() + ")");
+		messageFrame.spawn("Samples exported (" + total + "/" + samples.size() + ")");
 	}
 
 	@Override
@@ -452,10 +443,8 @@ public class AsciiTracker implements MainProgram {
 			else
 				Window.createFullscreen();
 
-		if (!messageText.getText().isEmpty()) {
+		if (messageFrame.isActive()) {
 			messageFrame.update();
-			if (Input.isKeyDown(Input.KEY_ENTER) || Input.isKeyDown(Input.KEY_ESCAPE))
-				messageText.setText("");
 			return;
 		}
 		if (Input.isKeyDown(Input.KEY_ESCAPE)) {
@@ -514,20 +503,21 @@ public class AsciiTracker implements MainProgram {
 		inputOptions();
 
 		orderFrameX = Window.getWidth() / 4;
-		patternFrameX = orderFrameX + 9;
+		patternFrameX = orderFrameX + 5;
 
-		Pattern pattern = composition.getPattern(composition.getBar());
+		Pattern pattern = composition.getTrack(selectedTrack).getPattern(composition.getBar());
 
 		if (Input.isButtonDown(Input.LEFT)) {
 			if (newSelectedBar != -1)
 				composition.setBar(newSelectedBar);
-			selectedNote[0] = newSelectedNote[0];
-			selectedNote[1] = newSelectedNote[1];
+			if (newSelectedTrack != -1)
+				selectedTrack = newSelectedTrack;
+			selectedNote = newSelectedNote;
 		} else if (Input.isKeyDown(Input.KEY_ENTER))
-			selectedNote[0] = -1;
+			selectedNote = -1;
 		selectedBar = composition.getBar();
 
-		if (Input.isKeyDown(Input.KEY_SPACE) || playButton && Input.isButtonDown(Input.LEFT)) {
+		if (Input.isKeyDown(Input.KEY_SPACE)) {
 			if (sampleSource.isPlaying())
 				sampleSource.stop();
 			else {
@@ -539,7 +529,6 @@ public class AsciiTracker implements MainProgram {
 					composition.play();
 			}
 		}
-		playButton = false;
 
 		if (Input.isKey(Input.KEY_CONTROL_LEFT)) {
 			inputSelectedPattern(pattern);
@@ -557,7 +546,6 @@ public class AsciiTracker implements MainProgram {
 
 		composition.setName(nameField.getText());
 		composition.setAuthor(authorField.getText());
-		composition.setComment(commentField.getText());
 		if (!tempoField.getText().isEmpty())
 			composition.setTempo(Integer.parseInt(tempoField.getText()));
 		if (!lengthField.getText().isEmpty())
@@ -571,16 +559,18 @@ public class AsciiTracker implements MainProgram {
 	}
 
 	private void inputOptions() {
-//		if (Input.isKeyDown(Input.KEY_1))
-//			option = OPTION_MENU;
-//		else if (Input.isKeyDown(Input.KEY_2))
-//			option = OPTION_SONG_INFO;
-//		else if (Input.isKeyDown(Input.KEY_3))
-//			option = OPTION_TRACK_LIST;
-//		else if (Input.isKeyDown(Input.KEY_4))
-//			option = OPTION_SAMPLE_LIST;
-//		else if (Input.isKeyDown(Input.KEY_5))
-//			option = OPTION_SAMPLE_LIBRARY;
+		if (Input.isKey(Input.KEY_CONTROL_LEFT)) {
+			if (Input.isKeyDown(Input.KEY_1))
+				option = OPTION_MENU;
+			else if (Input.isKeyDown(Input.KEY_2))
+				option = OPTION_SONG_INFO;
+			else if (Input.isKeyDown(Input.KEY_3))
+				option = OPTION_TRACK_LIST;
+			else if (Input.isKeyDown(Input.KEY_4))
+				option = OPTION_SAMPLE_LIST;
+			else if (Input.isKeyDown(Input.KEY_5))
+				option = OPTION_SAMPLE_LIBRARY;
+		}
 	}
 
 	private void inputScroll() {
@@ -590,7 +580,7 @@ public class AsciiTracker implements MainProgram {
 			patternScrollY = 2 * composition.getPosition() - 4;
 		} else if (Input.getTileX() >= patternFrameX) {
 			if (Input.isKey(Input.KEY_SHIFT_LEFT))
-				patternScrollX -= 9 * Input.getScroll();
+				patternScrollX -= 8 * Input.getScroll();
 			else
 				patternScrollY -= 2 * Input.getScroll();
 		} else if (Input.getTileX() >= orderFrameX) {
@@ -609,7 +599,7 @@ public class AsciiTracker implements MainProgram {
 		else if (orderScroll > maxOrderScroll)
 			orderScroll = maxOrderScroll;
 
-		int maxPatternScrollX = Composition.MAX_TRACKS * 10 - Window.getWidth() + patternFrameX + 8;
+		int maxPatternScrollX = Composition.MAX_TRACKS * 9 - Window.getWidth() + patternFrameX + 4;
 		if (maxPatternScrollX < 0)
 			maxPatternScrollX = 0;
 		if (patternScrollX < 0)
@@ -678,45 +668,48 @@ public class AsciiTracker implements MainProgram {
 
 	private void inputSelectedNote(Pattern pattern) {
 		int note = inputMidi();
-		if (pattern != null && !composition.isPlaying() && selectedNote[0] != -1) {
-			Track track = composition.getTrack(selectedNote[0]);
+		if (pattern != null && !composition.isPlaying() && selectedTrack != -1 && selectedNote != -1) {
+			Track track = composition.getTrack(selectedTrack);
 			if (note != Composition.INVALID) {
-				pattern.setNote(selectedNote[0], selectedNote[1], note);
-				track.update(pattern, selectedNote[1]);
+				pattern.setNote(selectedNote, note);
+				track.play(pattern, selectedNote);
 			}
 			if (Input.isKeyDown(Input.KEY_BACKSPACE))
-				pattern.deleteNote(selectedNote[0], selectedNote[1]);
+				pattern.deleteNote(selectedNote);
 			else if (Input.isKeyDown(Input.KEY_B))
-				pattern.setBreak(selectedNote[0], selectedNote[1]);
+				pattern.setBreak(selectedNote);
 			else if (Input.isKey(Input.KEY_SHIFT_LEFT)) {
 				if (Input.isKeyDown(Input.KEY_DOWN)) {
-					pattern.prevNote(selectedNote[0], selectedNote[1]);
-					track.update(pattern, selectedNote[1]);
+					pattern.prevNote(selectedNote);
+					track.play(pattern, selectedNote);
 				} else if (Input.isKeyDown(Input.KEY_UP)) {
-					pattern.nextNote(selectedNote[0], selectedNote[1]);
-					track.update(pattern, selectedNote[1]);
+					pattern.nextNote(selectedNote);
+					track.play(pattern, selectedNote);
 				} else if (Input.isKeyDown(Input.KEY_LEFT)) {
-					pattern.prevSample(selectedNote[0], selectedNote[1]);
-					track.update(pattern, selectedNote[1]);
+					pattern.prevSample(selectedNote);
+					track.play(pattern, selectedNote);
 				} else if (Input.isKeyDown(Input.KEY_RIGHT)) {
-					pattern.nextSample(selectedNote[0], selectedNote[1]);
-					track.update(pattern, selectedNote[1]);
+					pattern.nextSample(selectedNote);
+					track.play(pattern, selectedNote);
 				} else if (Input.isKeyDown(Input.KEY_Z)) {
-					pattern.prevOctave(selectedNote[0], selectedNote[1]);
-					track.update(pattern, selectedNote[1]);
+					pattern.prevOctave(selectedNote);
+					track.play(pattern, selectedNote);
 				} else if (Input.isKeyDown(Input.KEY_X)) {
-					pattern.nextOctave(selectedNote[0], selectedNote[1]);
-					track.update(pattern, selectedNote[1]);
+					pattern.nextOctave(selectedNote);
+					track.play(pattern, selectedNote);
 				}
 			}
 		}
 	}
 
 	private void inputSelectedPattern(Pattern pattern) {
+		if (selectedTrack == -1)
+			return;
+		Track track = composition.getTrack(selectedTrack);
 		if (Input.isKeyDown(Input.KEY_LEFT))
-			composition.prevPattern(composition.getBar());
+			track.prevPattern(composition.getBar());
 		else if (Input.isKeyDown(Input.KEY_RIGHT))
-			composition.nextPattern(composition.getBar());
+			track.nextPattern(composition.getBar());
 		else if (pattern != null) {
 			if (Input.isKeyDown(Input.KEY_C))
 				patternCopy = pattern.getData();
@@ -728,24 +721,24 @@ public class AsciiTracker implements MainProgram {
 	}
 
 	private void inputMoveNote() {
-		if (selectedNote[0] == -1 || Input.isKey(Input.KEY_SHIFT_LEFT))
+		if (selectedTrack == -1 || Input.isKey(Input.KEY_SHIFT_LEFT))
 			return;
 		if (Input.isKeyDown(Input.KEY_UP)) {
-			selectedNote[1]--;
-			if (selectedNote[1] < 0)
-				selectedNote[1] = 0;
+			selectedNote--;
+			if (selectedNote < 0)
+				selectedNote = 0;
 		} else if (Input.isKeyDown(Input.KEY_DOWN)) {
-			selectedNote[1]++;
-			if (selectedNote[1] >= composition.getTotalLength())
-				selectedNote[1] = composition.getTotalLength() - 1;
+			selectedNote++;
+			if (selectedNote >= composition.getTotalLength())
+				selectedNote = composition.getTotalLength() - 1;
 		} else if (Input.isKeyDown(Input.KEY_LEFT)) {
-			selectedNote[0]--;
-			if (selectedNote[0] < 0)
-				selectedNote[0] = 0;
+			selectedTrack--;
+			if (selectedTrack < 0)
+				selectedTrack = 0;
 		} else if (Input.isKeyDown(Input.KEY_RIGHT)) {
-			selectedNote[0]++;
-			if (selectedNote[0] >= Composition.MAX_TRACKS)
-				selectedNote[0] = Composition.MAX_TRACKS - 1;
+			selectedTrack++;
+			if (selectedTrack >= Composition.MAX_TRACKS)
+				selectedTrack = Composition.MAX_TRACKS - 1;
 		}
 	}
 
@@ -763,7 +756,8 @@ public class AsciiTracker implements MainProgram {
 				false);
 
 		newSelectedBar = -1;
-		newSelectedNote[0] = -1;
+		newSelectedTrack = -1;
+		newSelectedNote = -1;
 
 		int mX = Input.getTileX();
 		int mY = Input.getTileY();
@@ -774,8 +768,7 @@ public class AsciiTracker implements MainProgram {
 
 		Drawer.drawString(orderFrameX, 0, false,
 				"FILE:" + (saveFile == null ? "NONE" : saveFile.getName()) + " BAR:" + getBarName(composition.getBar())
-						+ " PATTERN:" + getPatternName(composition.getPattern(selectedBar)) + " OCTAVE:"
-						+ String.format("%+d", midiOctave) + " KEYBOARD:" + (midiKeyboard ? "ON" : "OFF"),
+						+ " OCTAVE:" + String.format("%+d", midiOctave) + " KEYBOARD:" + (midiKeyboard ? "ON" : "OFF"),
 				color);
 
 		BoxDrawer.disableCollision();
@@ -787,7 +780,7 @@ public class AsciiTracker implements MainProgram {
 		else if (browser != BROWSER_NONE)
 			fileBrowserFrame.render(Window.getWidth() / 2, Window.getHeight() / 2, Window.getWidth() / 2,
 					Window.getHeight() / 2, true);
-		if (!messageText.getText().isEmpty())
+		if (messageFrame.isActive())
 			messageFrame.render(Window.getWidth() / 2, Window.getHeight() / 2, Window.getWidth() / 3,
 					Window.getHeight() / 5, true);
 		BoxDrawer.enableCollision();
@@ -795,69 +788,70 @@ public class AsciiTracker implements MainProgram {
 
 	private void renderOrder(int mX, int mY, int color) {
 		// ORDER
-		BoxDrawer.drawBox(orderFrameX, 1, 8, 2, false, color);
-		Drawer.drawString(orderFrameX + 1, 2, false, "-ORDER-", color);
+		BoxDrawer.drawBox(orderFrameX, 1, 4, 2, false, color);
+		Drawer.drawString(orderFrameX + 1, 2, false, "BAR", color);
 
 		// MAX_PATTERNS
 		Drawer.enableClipping(orderFrameX, 4, Window.getWidth(), Window.getHeight());
 		for (int i = 0; i < composition.getLength(); i++) {
 			int y = i * 2 + 4 - orderScroll;
-			Pattern pattern = composition.getPattern(i);
 
-			if (mY == y + 1 && mX >= orderFrameX && mX <= orderFrameX + 8)
+			if (mY == y + 1 && mX >= orderFrameX && mX <= orderFrameX + 4) {
 				newSelectedBar = i;
+			}
 
-			String name = getBarName(i) + "::" + getPatternName(pattern);
-			BoxDrawer.drawBox(orderFrameX, y, 8, 2, false, color);
+			String name = getBarName(i);
+			BoxDrawer.drawBox(orderFrameX, y, 4, 2, false, color);
 			Drawer.drawString(orderFrameX + 1, y + 1, false, name, i == selectedBar ? COLOR : color);
 		}
 		Drawer.disableClipping();
 	}
 
 	private void renderPattern(int mX, int mY, int color) {
-		int position = composition.getPosition();
-
-		playButton = mY == 2 && mX >= patternFrameX && mX <= patternFrameX + 7;
+		int position = composition.isPlaying() ? composition.getPosition() : selectedNote;
 
 		// STOP/PLAY
-		BoxDrawer.drawBox(patternFrameX, 1, 7, 2, false, color);
+		BoxDrawer.drawBox(patternFrameX, 1, 3, 2, false, color);
 		Drawer.drawString(patternFrameX + 1, 2, false,
-				composition.isPlaying() ? (Glyphs.MEDIUM_SHADE + " STOP") : (Glyphs.BLACK_RIGHT_POINTER + " PLAY"),
-				playButton ? COLOR : color);
+				StringUtils.repeat(composition.isPlaying() ? Glyphs.BLACK_RIGHT_POINTER : Glyphs.MEDIUM_SHADE, 2),
+				color);
 
 		// POSITIONS
 		Drawer.enableClipping(patternFrameX, 4, Window.getWidth(), Window.getHeight());
 		for (int j = 0; j < Composition.PATTERN_LENGTH; j++) {
 			int y = j * 2 + 4 - patternScrollY;
-			BoxDrawer.drawBox(patternFrameX, y, 7, 2, false, color);
-			Drawer.drawString(patternFrameX + 1, y + 1, false, getPositionName(selectedBar, j),
-					position == j ? COLOR : color);
+			BoxDrawer.drawBox(patternFrameX, y, 3, 2, false, color);
+			Drawer.drawString(patternFrameX + 1, y + 1, false, getPositionName(j), position == j ? COLOR : color);
 		}
 
 		// NOTES
-		Pattern pattern = composition.getPattern(selectedBar);
 		for (int i = 0; i < Composition.MAX_TRACKS; i++) {
-			int x = i * 10 + patternFrameX + 8 - patternScrollX;
+			int x = i * 9 + patternFrameX + 4 - patternScrollX;
 			Track track = composition.getTrack(i);
+			Pattern pattern = track.getPattern(selectedBar);
 
-			Drawer.enableClipping(patternFrameX + 8, 0, Window.getWidth(), Window.getHeight());
-			BoxDrawer.drawBox(x, 1, 9, 2, false, color);
-			Drawer.drawString(x + 1, 2, false, track.getName(), color);
+			Drawer.enableClipping(patternFrameX + 4, 0, Window.getWidth(), Window.getHeight());
+			BoxDrawer.drawBox(x, 1, 8, 2, false, color);
+			Drawer.drawString(x + 1, 2, false, getTrackPatternName(i, pattern), i == selectedTrack ? COLOR : color);
 
-			Drawer.enableClipping(patternFrameX + 8, 4, Window.getWidth(), Window.getHeight());
+			if (mY == 2 && mX >= x && mX <= x + 8)
+				newSelectedTrack = i;
+
+			Drawer.enableClipping(patternFrameX + 4, 4, Window.getWidth(), Window.getHeight());
 			for (int j = 0; j < Composition.PATTERN_LENGTH; j++) {
 				int y = j * 2 + 4 - patternScrollY;
-				BoxDrawer.drawBox(x, y, 9, 2, true, color);
+				BoxDrawer.drawBox(x, y, 8, 2, true, color);
 
-				if (mY == y + 1 && mX >= x && mX <= x + 9) {
-					newSelectedNote[0] = i;
-					newSelectedNote[1] = j;
+				if (mY == y + 1 && mX >= x && mX <= x + 8) {
+					newSelectedTrack = i;
+					newSelectedNote = j;
 				}
 
-				int currentColor = (i == selectedNote[0] && j == selectedNote[1]
-						&& Engine.getElapsedTime() % 0.6f < 0.3f) ? COLOR : color;
+				int currentColor = (i == selectedTrack && j == selectedNote && Engine.getElapsedTime() % 0.6f < 0.3f)
+						? COLOR
+						: color;
 
-				String name = getNoteSampleName(pattern, i, j);
+				String name = getNoteSampleName(pattern, j);
 				Drawer.drawString(x + 1, y + 1, false, name, currentColor);
 			}
 		}
@@ -878,47 +872,43 @@ public class AsciiTracker implements MainProgram {
 		return infoFrame;
 	}
 
-	private void message(String message) {
-		messageText.setText(message);
-	}
-
-	public static String getNoteName(int note) {
+	private static String getNoteName(int note) {
 		return String.format("%s%01X", NOTES[note % 12], note / 12);
 	}
 
-	public static String getNoteSampleName(Pattern pattern, int track, int position) {
+	private static String getNoteSampleName(Pattern pattern, int position) {
 		if (pattern == null)
-			return "        ";
-		int note = pattern.getNote(track, position);
+			return "       ";
+		int note = pattern.getNote(position);
 		if (note == Composition.INVALID)
-			return "        ";
+			return "       ";
 		else if (note == Composition.BREAK)
-			return "^^^^^^^^";
-		int sample = pattern.getSample(track, position);
-		return getNoteName(note) + "::" + getSampleName(sample);
+			return "^^^^^^^";
+		int sample = pattern.getSample(position);
+		return getNoteName(note) + ":" + getSampleName(sample);
 	}
 
-	public static String getBarName(int bar) {
+	private static String getBarName(int bar) {
 		return String.format("%03d", bar + 1);
 	}
 
-	public static String getPositionName(int bar, int position) {
-		return String.format("%03d-%02d", bar + 1, position);
+	private static String getPositionName(int position) {
+		return String.format("%02d", position + 1);
 	}
 
-	public static String getSampleName(int sample) {
+	private static String getSampleName(int sample) {
 		return String.format("%03d", sample);
 	}
 
-	public static String getPatternName(Pattern pattern) {
-		if (pattern == null)
-			return "xx";
-		else
-			return getPatternName(pattern.getIndex());
+	private static String getTrackPatternName(int track, Pattern pattern) {
+		return String.format("T%02d:%s", track + 1, getPatternName(pattern));
 	}
 
-	public static String getPatternName(int pattern) {
-		return String.format("%02X", pattern);
+	private static String getPatternName(Pattern pattern) {
+		if (pattern == null)
+			return "Pxx";
+		else
+			return String.format("P%02X", pattern.getIndex());
 	}
 
 	@Override
@@ -933,17 +923,44 @@ public class AsciiTracker implements MainProgram {
 		Engine.start(new AsciiTracker());
 	}
 
+	private static class MessageFrame extends GUIFrame {
+
+		private final GUIText text;
+
+		public MessageFrame() {
+			super(COLOR, false, false);
+			text = new GUIText(this, -1, "");
+			new GUIButton(this, -1, "OK", f -> text.setText(""));
+		}
+
+		@Override
+		public void update() {
+			if (Input.isKeyDown(Input.KEY_ESCAPE) || Input.isKeyDown(Input.KEY_ENTER))
+				text.setText("");
+			super.update();
+		}
+
+		public void spawn(String message) {
+			text.setText(message);
+		}
+
+		public boolean isActive() {
+			return !text.getText().isEmpty();
+		}
+
+	}
+
 	private static class HelpFrame extends GUIFrame {
 
-		public HelpFrame(int color) {
-			super(color, false, false);
+		public HelpFrame() {
+			super(Colors.swap(COLOR), false, false);
 			setTitle("Help");
-//			add("Menu tab", Input.KEY_1);
-//			add("Info tab", Input.KEY_2);
-//			add("Tracks tab", Input.KEY_3);
-//			add("Samples tab", Input.KEY_4);
-//			add("Library tab", Input.KEY_5);
-//			new GUISeparator(this, -1, true);
+			add("Menu tab", Input.KEY_CONTROL_LEFT, Input.KEY_1);
+			add("Info tab", Input.KEY_CONTROL_LEFT, Input.KEY_2);
+			add("Tracks tab", Input.KEY_CONTROL_LEFT, Input.KEY_3);
+			add("Samples tab", Input.KEY_CONTROL_LEFT, Input.KEY_4);
+			add("Library tab", Input.KEY_CONTROL_LEFT, Input.KEY_5);
+			new GUISeparator(this, -1, true);
 			add("Quit", Input.KEY_CONTROL_LEFT, Input.KEY_W);
 			add("Help", Input.KEY_CONTROL_LEFT, Input.KEY_H);
 			add("Window/fullscreen", Input.KEY_F11);
